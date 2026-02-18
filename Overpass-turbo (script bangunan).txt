@@ -1,0 +1,116 @@
+Overpass-turbo.eu (script bangunan kecamatan):
+
+[out:json][timeout:25];
+
+// Area kecamatan (admin_level 7)
+area["boundary"="administrative"]["admin_level"="6"]["name"="Sidoarjo"]->.kecamatan;
+
+// Semua bangunan
+(
+  way["building"](area.kecamatan);
+  relation["building"](area.kecamatan);
+)->.bangunan;
+
+// Area sekolah
+(
+  node["amenity"="school"](area.kecamatan);
+  way["amenity"="school"](area.kecamatan);
+  relation["amenity"="school"](area.kecamatan);
+)->.sekolah;
+
+(
+  node["amenity"="university"](area.kecamatan);
+  way["amenity"="university"](area.kecamatan);
+  relation["amenity"="university"](area.kecamatan);
+)->.universitas;
+
+(
+  node["amenity"="kindergarten"](area.kecamatan);
+  way["amenity"="kindergarten"](area.kecamatan);
+  relation["amenity"="kindergarten"](area.kecamatan);
+)->.paudtk;
+
+(
+  node["amenity"="place_of_worship"](area.kecamatan);
+  way["amenity"="place_of_worship"](area.kecamatan);
+  relation["amenity"="place_of_worship"](area.kecamatan);
+)->.ibadah;
+
+(
+  node["amenity"="clinic"](area.kecamatan);
+  way["amenity"="clinic"](area.kecamatan);
+  relation["amenity"="clinic"](area.kecamatan);
+)->.klinik;
+
+(
+  node["amenity"="dentist"](area.kecamatan);
+  way["amenity"="dentist"](area.kecamatan);
+  relation["amenity"="dentist"](area.kecamatan);
+)->.dentist;
+
+(
+  node["leisure"="stadium"](area.kecamatan);
+  way["leisure"="stadium"](area.kecamatan);
+  relation["leisure"="stadium"](area.kecamatan);
+)->.stadium;
+
+(
+  node["leisure"="park"](area.kecamatan);
+  way["leisure"="park"](area.kecamatan);
+  relation["leisure"="park"](area.kecamatan);
+)->.taman;
+
+(
+  node["leisure"="playground"](area.kecamatan);
+  way["leisure"="playground"](area.kecamatan);
+  relation["leisure"="playground"](area.kecamatan);
+)->.playground;
+
+(
+  node["leisure"="pitch"](area.kecamatan);
+  way["leisure"="pitch"](area.kecamatan);
+  relation["leisure"="pitch"](area.kecamatan);
+)->.lapangan;
+
+(
+  node["landuse"="grass"](area.kecamatan);
+  way["landuse"="grass"](area.kecamatan);
+  relation["landuse"="grass"](area.kecamatan);
+)->.lapanganrumput;
+
+(
+  node["shop"="mall"](area.kecamatan);
+  way["shop"="mall"](area.kecamatan);
+  relation["shop"="mall"](area.kecamatan);
+  
+  // Tambahan jika ada yang ditandai sebagai gedung retail
+  way["building"="retail"](area.kecamatan);
+  way["building"="shopping"](area.kecamatan);
+);
+
+(
+  node["tourism"="museum"](area.kecamatan);
+  way["tourism"="museum"](area.kecamatan);
+  relation["tourism"="museum"](area.kecamatan);
+)->.museum;
+
+
+(
+  .bangunan;
+  .sekolah;
+  .universitas;
+  .paudtk;
+  .ibadah;
+  .klinik;
+  .dentist
+  .stadium;
+  .taman;
+  .playground;
+  .lapangan;
+  .lapanganrumput;
+  .museum;
+);
+
+out body;
+>;
+out skel qt;

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Peta Sidoarjo - Building Creator</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/building-creator.css">
+</head>
+<body>
+    <div class="dropdown-container">
+        <select id="kecamatanSelect">
+            <option value="">— Pilih Kecamatan —</option>
+        </select>
+    </div>
+    
+    <div id="map"></div>
+
+    <div id="info-panel" style="
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        background: white;
+        padding: 12px 16px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        z-index: 999;
+        font-size: 12px;
+        display: none;
+    ">
+        <div style="font-weight: 600; color: #333; margin-bottom: 4px;">
+            Tips Building Creator
+        </div>
+        <div style="color: #666;">
+            Klik "Add Building" lalu klik di peta untuk menambah bangunan
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script type="module" src="scripts/app/app.js"></script>
+
+    <script>
+        window.addEventListener('load', () => {
+            const infoPanel = document.getElementById('info-panel');
+            const hasSeenTips = localStorage.getItem('buildingCreatorTips');
+            
+            if (!hasSeenTips) {
+                infoPanel.style.display = 'block';
+                setTimeout(() => {
+                    infoPanel.style.opacity = '0';
+                    infoPanel.style.transition = 'opacity 0.5s';
+                    setTimeout(() => {
+                        infoPanel.style.display = 'none';
+                        localStorage.setItem('buildingCreatorTips', 'seen');
+                    }, 500);
+                }, 5000);
+            }
+        });
+    </script>
+</body>
+</html>

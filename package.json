@@ -1,0 +1,31 @@
+{
+  "name": "leaflet-pelanggan",
+  "version": "1.0.0",
+  "description": "Leaflet Map Application with PostgreSQL + PostGIS Backend",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js",
+    "import": "node server/scripts/import-csv.js",
+    "test:db": "node server/test-connection.js"
+  },
+  "keywords": [
+    "leaflet",
+    "postgis",
+    "postgresql",
+    "maps",
+    "gis"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^16.0.3",
+    "express": "^4.19.2",
+    "mysql2": "^3.17.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
