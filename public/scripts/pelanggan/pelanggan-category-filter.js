@@ -1,4 +1,3 @@
-// Core logic for category-based filtering
 let pelangganLayerRef = null;
 let allMarkers = new Map(); // Map of idpelanggan -> {marker, labelMarker, data}
 let currentFilters = {

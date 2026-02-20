@@ -50,24 +50,37 @@ export function isValidCoord(row) {
     return true;
 }
 
+const EXCLUDED_KEYS = ['_db_id'];
+
+const COLUMN_ORDER = [
+    'nosambungan', 'idpelanggan', 'nopelanggan', 'nama',
+    'alamat', 'noalamat', 'nourut',
+    'pakai', 'tagihan', 'tglbayar', 'lunas',
+    'Lat', 'Long',
+    'bulan', 'tahun',
+];
+
 export function generateCSV(data) {
     if (!data || data.length === 0) return '';
-    
-    const headers = Object.keys(data[0]);
-    let csvContent = headers.join(',') + '\n';
 
-    data.forEach(row => {
-        const values = headers.map(h => {
-            let val = String(row[h] || '');
-            if (val.includes(',') || val.includes('"') || val.includes('\n')) {
-                val = '"' + val.replace(/"/g, '""') + '"';
-            }
-            return val;
-        });
-        csvContent += values.join(',') + '\n';
-    });
+    const allKeys = Object.keys(data[0]).filter(k => !EXCLUDED_KEYS.includes(k));
+    const ordered = COLUMN_ORDER.filter(k => allKeys.includes(k));
+    const rest    = allKeys.filter(k => !COLUMN_ORDER.includes(k));
+    const headers = [...ordered, ...rest];
 
-    return csvContent;
+    const escapeCell = val => {
+        const str = String(val ?? '');
+        return (str.includes(',') || str.includes('"') || str.includes('\n'))
+            ? '"' + str.replace(/"/g, '""') + '"'
+            : str;
+    };
+
+    const rows = [
+        headers.join(','),
+        ...data.map(row => headers.map(h => escapeCell(row[h])).join(','))
+    ];
+
+    return rows.join('\n') + '\n';
 }
 
 export function downloadCSV(data, filename = 'pelanggan') {

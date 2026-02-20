@@ -100,7 +100,6 @@ export class PelangganAPI {
         });
     }
 
-    // Convert API data to GeoJSON Feature
     static toGeoJSON(pelangganData) {
         if (!Array.isArray(pelangganData)) {
             pelangganData = [pelangganData];
@@ -129,14 +128,13 @@ export class PelangganAPI {
         };
     }
 
-    // Convert to legacy format for compatibility
     static toLegacyFormat(pelangganData) {
         if (!Array.isArray(pelangganData)) {
             pelangganData = [pelangganData];
         }
 
         return pelangganData.map(p => ({
-            _db_id: p.id,          // ID PostgreSQL, dipakai untuk PUT /api/pelanggan/:id
+            _db_id: p.id,    
             nosambungan: p.nosambungan,
             idpelanggan: p.idpelanggan,
             nopelanggan: p.nopelanggan,
@@ -150,9 +148,10 @@ export class PelangganAPI {
             lunas: p.lunas,
             Long: p.longitude,
             Lat: p.latitude,
+            bulan: p.bulan,    
+            tahun: p.tahun,       
         }));
     }
 }
 
-// Create global instance
 export const pelangganAPI = new PelangganAPI();
