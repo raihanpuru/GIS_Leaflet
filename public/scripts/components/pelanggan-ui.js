@@ -192,7 +192,7 @@ export function updateLegend(pelangganCount, isDraggingEnabled) {
 }
 
 export function createControlButtons(callbacks) {
-    const { onToggle, onDragMode, onSave, onAutoCorrect, onShowBuilding } = callbacks;
+    const { onToggle, onDragMode, onSave, onShowBuilding } = callbacks;
     
     const control = L.control({ position: 'topright' });
     
@@ -241,14 +241,6 @@ export function createControlButtons(callbacks) {
         btnDrag.onclick = onDragMode;
         L.DomEvent.disableClickPropagation(btnDrag);
 
-        const btnAutoCorrect = L.DomUtil.create('button', 'leaflet-autocorrect-btn');
-        btnAutoCorrect.id = 'autoCorrectBtn';
-        btnAutoCorrect.innerHTML = 'Auto-Correct';
-        btnAutoCorrect.style.cssText = buttonStyle('#ff9800', '#ff9800');
-        addHoverEffect(btnAutoCorrect);
-        btnAutoCorrect.onclick = onAutoCorrect;
-        L.DomEvent.disableClickPropagation(btnAutoCorrect);
-
         const btnSave = L.DomUtil.create('button', 'leaflet-save-btn');
         btnSave.id = 'savePelanggan';
         btnSave.innerHTML = 'Save CSV';
@@ -268,7 +260,6 @@ export function createControlButtons(callbacks) {
         container.appendChild(btnToggle);
         container.appendChild(btnShowBuilding);
         container.appendChild(btnDrag);
-        container.appendChild(btnAutoCorrect);
         container.appendChild(btnSave);
 
         return container;

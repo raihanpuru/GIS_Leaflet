@@ -1,8 +1,6 @@
 import { initKecamatanDropdown } from '../polygon/kecamatan.js';
 import { loadGeoJSON, getMap, getCurrentGeojsonData, toggleBuildingLayer, isBuildingVisible } from '../polygon/polygon.js';
 import { loadPelanggan, setCurrentKecamatan } from '../pelanggan/pelanggan.js';
-import { handleMapClick, setActiveKecamatan } from '../polygon/building-creator.js';
-import { createBuildingCreatorControl } from '../components/building-creator-ui.js';
 import { createBlokFilterControl } from '../components/pelanggan-filter-ui.js';
 import { createAddressFilterControl } from '../components/pelanggan-address-filter-ui.js';
 import { createPeriodFilterControl } from '../components/pelanggan-period-filter-ui.js';
@@ -35,7 +33,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (AppConfig.defaultKecamatan) {
         loadGeoJSON(AppConfig.defaultKecamatan);
         setCurrentKecamatan(AppConfig.defaultKecamatan);
-        setActiveKecamatan(AppConfig.defaultKecamatan);
         if (kecamatanSelect) {
             kecamatanSelect.value = AppConfig.defaultKecamatan;
         }
@@ -44,10 +41,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => {
         const map = getMap();
         if (map) {
-            const buildingControl = createBuildingCreatorControl(() => currentKecamatan);
-            buildingControl.addTo(map);
-            
-            // Period filter sekarang bukan Leaflet control, langsung panggil fungsinya
+                // Period filter sekarang bukan Leaflet control, langsung panggil fungsinya
             createPeriodFilterControl();
             
             const blokFilterControl = createBlokFilterControl(getCurrentGeojsonData);
@@ -56,9 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const addressFilterControl = createAddressFilterControl(getCurrentGeojsonData);
             addressFilterControl.addTo(map);
             
-            map.on('click', handleMapClick);
-            
-            console.log('Building creator control initialized');
+            map.on('click', () => {});
             console.log('Period filter control initialized');
             console.log('Blok filter control initialized');
             console.log('Address filter control initialized');
@@ -73,7 +65,6 @@ function handleKecamatanChange(kecamatan) {
     currentKecamatan = kecamatan;
     loadGeoJSON(kecamatan);
     setCurrentKecamatan(kecamatan);
-    setActiveKecamatan(kecamatan);
 }
 
 export { AppConfig, currentKecamatan };

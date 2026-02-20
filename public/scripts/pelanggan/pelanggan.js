@@ -14,7 +14,6 @@ import {
     updateDragButton
 } from '../components/pelanggan-ui.js';
 import { updateShowBuildingButton } from '../components/polygon-ui.js';
-import { processAutoCorrect } from '../components/pelanggan-autocorrect-ui.js';
 import { updateBlokOptions } from '../components/pelanggan-filter-ui.js';
 import { setPelangganLayerRef } from '../pelanggan/pelanggan-filter.js';
 import { createCategoryFilterControl } from '../components/pelanggan-category-filter-ui.js';
@@ -78,10 +77,6 @@ function savePelangganCSV() {
     alert(`Data pelanggan berhasil disimpan!\nFile: ${filename}`);
 }
 
-function handleAutoCorrect() {
-    processAutoCorrect(currentKecamatan, 50);
-}
-
 function addPelangganLegend() {
     updateLegend(pelangganCount, isDraggingEnabled);
 }
@@ -94,7 +89,6 @@ function addControlButtons() {
         onToggle: togglePelangganLayer,
         onDragMode: toggleDragMode,
         onSave: savePelangganCSV,
-        onAutoCorrect: handleAutoCorrect,
         onShowBuilding: () => {
             const isNowVisible = toggleBuildingLayer();
             updateShowBuildingButton(isNowVisible);
