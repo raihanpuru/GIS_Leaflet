@@ -21,7 +21,7 @@ import {
     setPelangganCategoryLayerRef,
     buildMarkersMap
 } from '../pelanggan/pelanggan-category-filter.js';
-import { updateAddressOptions } from '../components/pelanggan-address-filter-ui.js';
+import { updateAddressOptions } from '../components/pelanggan-filter-ui.js';
 import { setPelangganLayerRef as setPelangganAddressLayerRef } from '../pelanggan/pelanggan-address-filter.js';
 
 
@@ -73,7 +73,7 @@ function toggleDragMode() {
 }
 
 function savePelangganCSV() {
-    const filename = downloadCSV(pelangganData, 'pelangganpuriindah');
+    const filename = downloadCSV(pelangganData, 'pelanggan');
     alert(`Data pelanggan berhasil disimpan!\nFile: ${filename}`);
 }
 
@@ -170,7 +170,7 @@ export async function loadPelanggan(periodFilter = {}) {
     }
 
     try {
-        const filterParams = { limit: 10000 };
+        const filterParams = { limit: 20000 };
         if (periodFilter.bulan) filterParams.bulan = periodFilter.bulan;
         if (periodFilter.tahun) filterParams.tahun = periodFilter.tahun;
         

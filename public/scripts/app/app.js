@@ -2,7 +2,6 @@ import { initKecamatanDropdown } from '../polygon/kecamatan.js';
 import { loadGeoJSON, getMap, getCurrentGeojsonData, toggleBuildingLayer, isBuildingVisible } from '../polygon/polygon.js';
 import { loadPelanggan, setCurrentKecamatan } from '../pelanggan/pelanggan.js';
 import { createBlokFilterControl } from '../components/pelanggan-filter-ui.js';
-import { createAddressFilterControl } from '../components/pelanggan-address-filter-ui.js';
 import { createPeriodFilterControl } from '../components/pelanggan-period-filter-ui.js';
 
 const AppConfig = {
@@ -47,13 +46,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const blokFilterControl = createBlokFilterControl(getCurrentGeojsonData);
             blokFilterControl.addTo(map);
             
-            const addressFilterControl = createAddressFilterControl(getCurrentGeojsonData);
-            addressFilterControl.addTo(map);
-            
             map.on('click', () => {});
             console.log('Period filter control initialized');
-            console.log('Blok filter control initialized');
-            console.log('Address filter control initialized');
+            console.log('Combined Blok + Alamat filter control initialized');
         }
     }, 600);
     

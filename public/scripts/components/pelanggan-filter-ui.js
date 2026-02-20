@@ -6,13 +6,19 @@ import {
     refreshFilter as refreshFilterCore
 } from '../pelanggan/pelanggan-filter.js';
 
+import { 
+    getAvailableAddresses, 
+    highlightBuildingsByAddress, 
+    clearBuildingHighlight as clearHighlight
+} from '../pelanggan/pelanggan-address-filter.js';
+
 export { refreshFilterCore as refreshFilter };
 
 export function createBlokFilterControl(getGeojsonData) {
     const control = L.control({ position: 'topleft' });
     
     control.onAdd = function() {
-        const container = L.DomUtil.create('div', 'blok-filter-control');
+        const container = L.DomUtil.create('div', 'combined-filter-control');
         container.style.cssText = `
             background: white;
             border-radius: 8px;
@@ -23,23 +29,84 @@ export function createBlokFilterControl(getGeojsonData) {
             max-width: 250px;
         `;
 
-        const title = L.DomUtil.create('div', '', container);
-        title.style.cssText = `
+        // ── SECTION HEADER
+        const mainTitle = L.DomUtil.create('div', '', container);
+        mainTitle.style.cssText = `
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
             color: #333;
             margin-bottom: 10px;
             padding-bottom: 8px;
             border-bottom: 2px solid #f0f0f0;
         `;
-        title.textContent = 'Filter Blok Pelanggan';
+        mainTitle.textContent = 'Filter Pelanggan';
 
-        const selectContainer = L.DomUtil.create('div', '', container);
-        selectContainer.style.cssText = 'margin-bottom: 8px;';
+        // ── LABEL ALAMAT
+        const addressLabel = L.DomUtil.create('div', '', container);
+        addressLabel.style.cssText = `
+            font-size: 11px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        `;
+        addressLabel.textContent = 'Alamat';
 
-        const select = L.DomUtil.create('select', '', selectContainer);
-        select.id = 'blokFilterSelect';
-        select.style.cssText = `
+        const addressSelectContainer = L.DomUtil.create('div', '', container);
+        addressSelectContainer.style.cssText = 'margin-bottom: 10px;';
+
+        const addressSelect = L.DomUtil.create('select', '', addressSelectContainer);
+        addressSelect.id = 'addressFilterSelect';
+        addressSelect.style.cssText = `
+            width: 100%;
+            padding: 8px;
+            border: 2px solid #FF9800;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #333;
+            cursor: pointer;
+            background: white;
+            transition: all 0.2s ease;
+        `;
+
+        addressSelect.onmouseover = () => {
+            addressSelect.style.borderColor = '#F57C00';
+            addressSelect.style.boxShadow = '0 2px 8px rgba(255, 152, 0, 0.3)';
+        };
+        addressSelect.onmouseout = () => {
+            addressSelect.style.borderColor = '#FF9800';
+            addressSelect.style.boxShadow = 'none';
+        };
+
+        updateAddressOptions(addressSelect);
+
+        // ── DIVIDER
+        const divider = L.DomUtil.create('div', '', container);
+        divider.style.cssText = `
+            border-top: 1px solid #f0f0f0;
+            margin-bottom: 10px;
+        `;
+
+        // ── LABEL BLOK
+        const blokLabel = L.DomUtil.create('div', '', container);
+        blokLabel.style.cssText = `
+            font-size: 11px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        `;
+        blokLabel.textContent = 'Blok';
+
+        const blokSelectContainer = L.DomUtil.create('div', '', container);
+        blokSelectContainer.style.cssText = 'margin-bottom: 8px;';
+
+        const blokSelect = L.DomUtil.create('select', '', blokSelectContainer);
+        blokSelect.id = 'blokFilterSelect';
+        blokSelect.style.cssText = `
             width: 100%;
             padding: 8px;
             border: 2px solid #2196F3;
@@ -52,31 +119,18 @@ export function createBlokFilterControl(getGeojsonData) {
             transition: all 0.2s ease;
         `;
 
-        select.onmouseover = () => {
-            select.style.borderColor = '#1976D2';
-            select.style.boxShadow = '0 2px 8px rgba(33, 150, 243, 0.3)';
+        blokSelect.onmouseover = () => {
+            blokSelect.style.borderColor = '#1976D2';
+            blokSelect.style.boxShadow = '0 2px 8px rgba(33, 150, 243, 0.3)';
         };
-        select.onmouseout = () => {
-            select.style.borderColor = '#2196F3';
-            select.style.boxShadow = 'none';
-        };
-
-        updateBlokOptions(select);
-
-        select.onchange = function() {
-            const selectedBlok = this.value;
-            const geojsonData = getGeojsonData();
-            
-            const checkbox = document.getElementById('nonPelangganCheckbox');
-            if (checkbox) checkbox.checked = false;
-            
-            if (selectedBlok && geojsonData) {
-                highlightBuildingsByBlok(selectedBlok, geojsonData);
-            } else {
-                clearBuildingHighlight();
-            }
+        blokSelect.onmouseout = () => {
+            blokSelect.style.borderColor = '#2196F3';
+            blokSelect.style.boxShadow = 'none';
         };
 
+        updateBlokOptions(blokSelect);
+
+        // ── CHECKBOX
         const checkboxContainer = L.DomUtil.create('div', '', container);
         checkboxContainer.style.cssText = `
             margin-top: 10px;
@@ -107,7 +161,7 @@ export function createBlokFilterControl(getGeojsonData) {
         checkboxText.textContent = 'Tampilkan bangunan tanpa pelanggan';
         checkboxText.style.cssText = 'font-weight: 500;';
 
-        // Add filter description display
+        // ── FILTER DESC
         const filterDescContainer = L.DomUtil.create('div', '', container);
         filterDescContainer.id = 'blokFilterDesc';
         filterDescContainer.style.cssText = `
@@ -122,20 +176,7 @@ export function createBlokFilterControl(getGeojsonData) {
             border-left: 3px solid #4CAF50;
         `;
 
-        checkbox.onchange = function() {
-            const geojsonData = getGeojsonData();
-            
-            if (this.checked) {
-                select.value = '';
-                
-                if (geojsonData) {
-                    highlightNonPelangganBuildings(geojsonData);
-                }
-            } else {
-                clearBuildingHighlight();
-            }
-        };
-
+        // ── CLEAR ALL BUTTON
         const btnClear = L.DomUtil.create('button', '', container);
         btnClear.innerHTML = 'Clear Filter';
         btnClear.style.cssText = `
@@ -149,7 +190,7 @@ export function createBlokFilterControl(getGeojsonData) {
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
-            margin-top: 8px;
+            margin-top: 10px;
         `;
 
         btnClear.onmouseover = () => {
@@ -161,10 +202,53 @@ export function createBlokFilterControl(getGeojsonData) {
             btnClear.style.boxShadow = 'none';
         };
 
+        // ── EVENT HANDLERS
+        addressSelect.onchange = function() {
+            const selectedAddress = this.value;
+            const geojsonData = getGeojsonData();
+            
+            updateBlokOptions(blokSelect, selectedAddress || null);
+            
+            if (selectedAddress && geojsonData) {
+                highlightBuildingsByAddress(selectedAddress, geojsonData);
+            } else {
+                clearHighlight();
+            }
+        };
+
+        blokSelect.onchange = function() {
+            const selectedBlok = this.value;
+            const geojsonData = getGeojsonData();
+            
+            if (checkbox) checkbox.checked = false;
+            
+            if (selectedBlok && geojsonData) {
+                highlightBuildingsByBlok(selectedBlok, geojsonData);
+            } else {
+                clearBuildingHighlight();
+            }
+        };
+
+        checkbox.onchange = function() {
+            const geojsonData = getGeojsonData();
+            
+            if (this.checked) {
+                blokSelect.value = '';
+                if (geojsonData) {
+                    highlightNonPelangganBuildings(geojsonData);
+                }
+            } else {
+                clearBuildingHighlight();
+            }
+        };
+
         btnClear.onclick = () => {
-            select.value = '';
+            addressSelect.value = '';
+            blokSelect.value = '';
             checkbox.checked = false;
             clearBuildingHighlight();
+            clearHighlight();
+            updateBlokOptions(blokSelect, null);
         };
 
         L.DomEvent.disableClickPropagation(container);
@@ -180,7 +264,6 @@ export function updateBlokOptions(selectElement, filterByAddress = null) {
     if (!selectElement) {
         selectElement = document.getElementById('blokFilterSelect');
     }
-    
     if (!selectElement) return;
     
     const bloks = getAvailableBloks(filterByAddress);
@@ -195,7 +278,6 @@ export function updateBlokOptions(selectElement, filterByAddress = null) {
         selectElement.appendChild(option);
     });
     
-    // Reset selection jika blok yang dipilih tidak ada dalam list baru
     if (currentValue && !bloks.includes(currentValue)) {
         selectElement.value = '';
     } else if (currentValue && bloks.includes(currentValue)) {
@@ -206,11 +288,35 @@ export function updateBlokOptions(selectElement, filterByAddress = null) {
     console.log(`[pelanggan-filter-ui] Loaded ${bloks.length} blok options${addressInfo}:`, bloks.join(', '));
 }
 
+export function updateAddressOptions(selectElement) {
+    if (!selectElement) {
+        selectElement = document.getElementById('addressFilterSelect');
+    }
+    if (!selectElement) return;
+    
+    const addresses = getAvailableAddresses();
+    const currentValue = selectElement.value; 
+    
+    selectElement.innerHTML = '<option value="">-- Pilih Alamat --</option>';
+    
+    addresses.forEach(address => {
+        const option = document.createElement('option');
+        option.value = address;
+        option.textContent = address;
+        selectElement.appendChild(option);
+    });
+    
+    if (currentValue && addresses.includes(currentValue)) {
+        selectElement.value = currentValue;
+    }
+    
+    console.log(`[pelanggan-filter-ui] Loaded ${addresses.length} address options:`, addresses.join(', '));
+}
+
 export function updateFilterDescription(categoryFilters) {
     const descContainer = document.getElementById('blokFilterDesc');
     if (!descContainer) return;
     
-    // Build filter description text
     const parts = [];
     
     if (categoryFilters.usage !== 'all') {
