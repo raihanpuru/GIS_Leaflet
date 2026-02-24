@@ -1,11 +1,22 @@
 import { getPelangganData } from './pelanggan.js';
 import { getMap } from '../polygon/polygon.js';
+import { isPelangganLayerVisible } from './pelanggan.js';
 
 let pelangganLayerRef = null;
 let currentFilter = null;
 
+// Simpan semua marker original agar bisa di-restore meski sudah di-removeLayer()
+let allMarkersSnapshot = [];
+
 export function setPelangganLayerRef(layer) {
     pelangganLayerRef = layer;
+    // Snapshot semua marker saat layer baru di-set
+    allMarkersSnapshot = [];
+    if (layer) {
+        layer.eachLayer(l => {
+            if (l instanceof L.Marker) allMarkersSnapshot.push(l);
+        });
+    }
 }
 
 export function getAvailableAddresses() {
@@ -42,36 +53,39 @@ function filterPelangganMarkersByAddress(address) {
         console.log('[address-filter] Map not available');
         return;
     }
-    
-    pelangganLayerRef.eachLayer(layer => {
-        if (layer instanceof L.Marker) {
-            let shouldShow = true;
+
+    // Gunakan snapshot agar marker yang sudah diremove pun bisa di-iterate
+    const markersToIterate = allMarkersSnapshot.length > 0
+        ? allMarkersSnapshot
+        : (() => { const arr = []; pelangganLayerRef.eachLayer(l => { if (l instanceof L.Marker) arr.push(l); }); return arr; })();
+
+    markersToIterate.forEach(layer => {
+        let shouldShow = true;
+        
+        if (address) {
+            const latlng = layer.getLatLng();
+            const pelanggan = pelangganData.find(p => {
+                const lat = parseFloat(p['Lat']);
+                const lng = parseFloat(p['Long']);
+                return Math.abs(lat - latlng.lat) < 0.000001 && 
+                       Math.abs(lng - latlng.lng) < 0.000001;
+            });
             
-            if (address) {
-                const latlng = layer.getLatLng();
-                const pelanggan = pelangganData.find(p => {
-                    const lat = parseFloat(p['Lat']);
-                    const lng = parseFloat(p['Long']);
-                    return Math.abs(lat - latlng.lat) < 0.000001 && 
-                           Math.abs(lng - latlng.lng) < 0.000001;
-                });
-                
-                if (pelanggan) {
-                    shouldShow = (pelanggan.alamat && pelanggan.alamat.trim() === address);
-                } else {
-                    shouldShow = false;
-                }
-            }
-            
-            // Benar-benar remove/add marker dari map, bukan hanya ubah opacity
-            if (shouldShow) {
-                if (!map.hasLayer(layer)) {
-                    layer.addTo(map);
-                }
+            if (pelanggan) {
+                shouldShow = (pelanggan.alamat && pelanggan.alamat.trim() === address);
             } else {
-                if (map.hasLayer(layer)) {
-                    map.removeLayer(layer);
-                }
+                shouldShow = false;
+            }
+        }
+        
+        // Benar-benar remove/add marker dari cluster layer, bukan dari map langsung
+        if (shouldShow) {
+            if (!pelangganLayerRef.hasLayer(layer)) {
+                pelangganLayerRef.addLayer(layer);
+            }
+        } else {
+            if (pelangganLayerRef.hasLayer(layer)) {
+                pelangganLayerRef.removeLayer(layer);
             }
         }
     });
@@ -98,6 +112,14 @@ export function highlightBuildingsByAddress(address, geojsonData) {
     // Hide/show pelanggan markers
     filterPelangganMarkersByAddress(address);
 
+    // Pastikan layer cluster tampil di map saat filter aktif,
+    // meski tombol "Show Pelanggan" belum diaktifkan
+    const map = getMap();
+    if (map && pelangganLayerRef && !map.hasLayer(pelangganLayerRef)) {
+        pelangganLayerRef.addTo(map);
+        console.log('[address-filter] Auto-menampilkan pelangganLayer karena filter alamat aktif');
+    }
+
     // Update info panel
     updateInfoPanel(address, filteredPelanggan.length);
 }
@@ -107,16 +129,27 @@ export function clearBuildingHighlight() {
 
     currentFilter = null;
     
-    // Show all pelanggan markers by adding them back to the map
-    const map = getMap();
-    if (pelangganLayerRef && map) {
-        pelangganLayerRef.eachLayer(layer => {
-            if (layer instanceof L.Marker) {
-                if (!map.hasLayer(layer)) {
-                    layer.addTo(map);
-                }
+    // Show all pelanggan markers by adding them back to the cluster layer
+    // Gunakan snapshot agar marker yang sudah diremove pun bisa dikembalikan
+    if (pelangganLayerRef) {
+        const markersToRestore = allMarkersSnapshot.length > 0
+            ? allMarkersSnapshot
+            : (() => { const arr = []; pelangganLayerRef.eachLayer(l => { if (l instanceof L.Marker) arr.push(l); }); return arr; })();
+
+        markersToRestore.forEach(layer => {
+            if (!pelangganLayerRef.hasLayer(layer)) {
+                pelangganLayerRef.addLayer(layer);
             }
         });
+    }
+
+    // Jika tombol "Show Pelanggan" sedang OFF, sembunyikan kembali layer dari map
+    const map = getMap();
+    if (map && pelangganLayerRef && !isPelangganLayerVisible()) {
+        if (map.hasLayer(pelangganLayerRef)) {
+            map.removeLayer(pelangganLayerRef);
+            console.log('[address-filter] Filter dihapus & pelangganLayer disembunyikan kembali (toggle OFF)');
+        }
     }
 
     // Clear info panel

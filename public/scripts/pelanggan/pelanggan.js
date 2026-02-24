@@ -28,11 +28,33 @@ import { setPelangganLayerRef as setPelangganAddressLayerRef, getCurrentAddressF
 
 
 let pelangganLayer = null;
+let labelLayer = null;
 let pelangganCount = 0;
 let isPelangganVisible = false;
 let pelangganData = [];
 let isDraggingEnabled = false;
-let currentKecamatan = null; 
+let currentKecamatan = null;
+
+// Map untuk pasangkan marker <-> labelMarker
+const markerLabelMap = new Map(); // key: marker instance, value: labelMarker instance
+
+function updateLabelVisibility() {
+    if (!pelangganLayer || !labelLayer) return;
+    const map = getMap();
+    if (!map) return;
+
+    markerLabelMap.forEach((labelMarker, marker) => {
+        // getVisibleParent() -> marker itu sendiri kalau sudah unclustered,
+        // -> cluster icon kalau masih tergabung dalam cluster
+        const visibleParent = pelangganLayer.getVisibleParent(marker);
+        const isUnclustered = visibleParent === marker;
+        if (isUnclustered) {
+            if (!labelLayer.hasLayer(labelMarker)) labelLayer.addLayer(labelMarker);
+        } else {
+            if (labelLayer.hasLayer(labelMarker)) labelLayer.removeLayer(labelMarker);
+        }
+    });
+}
 
 function togglePelangganLayer() {
     const map = getMap();
@@ -40,10 +62,12 @@ function togglePelangganLayer() {
 
     if (isPelangganVisible) {
         map.removeLayer(pelangganLayer);
+        if (labelLayer) map.removeLayer(labelLayer);
         isPelangganVisible = false;
         console.log('[pelanggan.js] Layer pelanggan disembunyikan');
     } else {
         pelangganLayer.addTo(map);
+        if (labelLayer) labelLayer.addTo(map);
         addPelangganLegend();
         isPelangganVisible = true;
         console.log('[pelanggan.js] Layer pelanggan ditampilkan');
@@ -239,6 +263,9 @@ function createPelangganMarker(row) {
         zIndexOffset: -1
     });
 
+    // Daftarkan pasangan marker <-> label
+    markerLabelMap.set(marker, labelMarker);
+
     return { marker, labelMarker };
 }
 
@@ -266,12 +293,27 @@ export async function loadPelanggan(periodFilter = {}) {
         if (pelangganLayer && map.hasLayer(pelangganLayer)) {
             map.removeLayer(pelangganLayer);
         }
+        if (labelLayer && map.hasLayer(labelLayer)) {
+            map.removeLayer(labelLayer);
+        }
+        markerLabelMap.clear();
 
         // Konversi format DB (longitude/latitude) -> format legacy (Long/Lat)
         const rows = PelangganAPI.toLegacyFormat(response.data);
         pelangganData = rows;
 
-        pelangganLayer = L.layerGroup();
+        pelangganLayer = L.markerClusterGroup({
+            disableClusteringAtZoom: 18,
+            maxClusterRadius: 60,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+        });
+
+        // Update visibilitas label setiap kali animasi cluster selesai atau zoom berubah
+        pelangganLayer.on('animationend', updateLabelVisibility);
+        map.on('zoomend', updateLabelVisibility);
+
+        labelLayer = L.layerGroup(); // label mulai kosong, diisi oleh updateLabelVisibility
         pelangganCount = 0;
         let skipped = 0;
 
@@ -287,7 +329,7 @@ export async function loadPelanggan(periodFilter = {}) {
             const { marker, labelMarker } = createPelangganMarker(row);
 
             pelangganLayer.addLayer(marker);
-            pelangganLayer.addLayer(labelMarker);
+            // labelMarker TIDAK langsung ditambahkan — dikelola oleh updateLabelVisibility()
 
             pelangganCount++;
         });
@@ -295,6 +337,7 @@ export async function loadPelanggan(periodFilter = {}) {
         // Add layer back if it was visible before
         if (isPelangganVisible) {
             pelangganLayer.addTo(map);
+            labelLayer.addTo(map);
         }
 
         // Only add control buttons once (on first load)

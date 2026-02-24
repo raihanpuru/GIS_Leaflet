@@ -12,9 +12,17 @@ import {
 
 let currentFilter = null;
 let pelangganLayerRef = null;
+// Snapshot semua marker agar restore bisa dilakukan meski marker sudah di-removeLayer()
+let allMarkersSnapshot = [];
 
 export function setPelangganLayerRef(layer) {
     pelangganLayerRef = layer;
+    allMarkersSnapshot = [];
+    if (layer) {
+        layer.eachLayer(l => {
+            if (l instanceof L.Marker) allMarkersSnapshot.push(l);
+        });
+    }
 }
 
 export function getCurrentFilter() {
@@ -78,7 +86,12 @@ function filterPelangganMarkers(blok) {
     const map = getMap();
     const activeAddress = getCurrentAddressFilter();
 
-    pelangganLayerRef.eachLayer(layer => {
+    // Gunakan snapshot agar marker yang sudah diremove pun bisa di-iterate
+    const markersToIterate = allMarkersSnapshot.length > 0
+        ? allMarkersSnapshot
+        : (() => { const arr = []; pelangganLayerRef.eachLayer(l => { if (l instanceof L.Marker) arr.push(l); }); return arr; })();
+
+    markersToIterate.forEach(layer => {
         if (!(layer instanceof L.Marker)) return;
 
         let shouldShow = true;
@@ -107,9 +120,9 @@ function filterPelangganMarkers(blok) {
 
         if (map) {
             if (shouldShow) {
-                if (!map.hasLayer(layer)) layer.addTo(map);
+                if (!pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.addLayer(layer);
             } else {
-                if (map.hasLayer(layer)) map.removeLayer(layer);
+                if (pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.removeLayer(layer);
             }
         } else {
             layer.setOpacity(shouldShow ? 1 : 0);
@@ -125,13 +138,19 @@ export function clearBuildingHighlight() {
     currentFilter = null;
 
     const activeAddress = getCurrentAddressFilter();
+
+    // Gunakan snapshot agar marker yang sudah di-removeLayer() pun bisa dikembalikan
+    const markersToRestore = allMarkersSnapshot.length > 0
+        ? allMarkersSnapshot
+        : (() => { const arr = []; if (pelangganLayerRef) pelangganLayerRef.eachLayer(l => { if (l instanceof L.Marker) arr.push(l); }); return arr; })();
+
     if (pelangganLayerRef && map) {
         const pelangganData = getPelangganData();
-        pelangganLayerRef.eachLayer(layer => {
+        markersToRestore.forEach(layer => {
             if (!(layer instanceof L.Marker)) return;
 
             if (!activeAddress) {
-                if (!map.hasLayer(layer)) layer.addTo(map);
+                if (!pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.addLayer(layer);
             } else {
                 const latlng = layer.getLatLng();
                 const pelanggan = pelangganData.find(p => {
@@ -143,9 +162,9 @@ export function clearBuildingHighlight() {
                 const shouldShow = pelanggan && pelanggan.alamat &&
                                    pelanggan.alamat.trim() === activeAddress;
                 if (shouldShow) {
-                    if (!map.hasLayer(layer)) layer.addTo(map);
+                    if (!pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.addLayer(layer);
                 } else {
-                    if (map.hasLayer(layer)) map.removeLayer(layer);
+                    if (pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.removeLayer(layer);
                 }
             }
         });
