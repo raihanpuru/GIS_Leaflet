@@ -1,112 +1,131 @@
 import { categories } from '../polygon/kategori.js';
 import { clearBuildingPelangganMap } from '../pelanggan/building-pelanggan-matcher.js';
 import { createLegendControl, createLayerControl, updateBuildingCountDisplay, updatePelangganBuildingCount, updateShowBuildingButton } from '../components/polygon-ui.js';
-import { processAreas, processBuildings, separateFeaturesIntoAreasAndBuildings } from '../polygon/polygon-processor.js';
+import { processAreas, prepareBuildingFeatures, createBuildingLayerFromPrepared, separateFeaturesIntoAreasAndBuildings } from '../polygon/polygon-processor.js';
 
 const map = L.map('map').setView([-7.428, 112.72], 12);
 
-export function getMap() {
-    return map;
-}
-
-export function getCurrentGeojsonData() {
-    return currentGeojsonData;
-}
+export function getMap() { return map; }
+export function getCurrentGeojsonData() { return currentGeojsonData; }
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 20
 }).addTo(map);
 
-let currentLayers = {};
-let currentLegend = null;
-let currentLayerControl = null;
-let currentPelangganData = null; 
-let currentGeojsonData = null;
-let buildingLayerGroup = null;
-let buildingVisible = false;
+// ─── State ───────────────────────────────────────────────────────────────────
+let currentLayers        = {};
+let currentLegend        = null;
+let currentLayerControl  = null;
+let currentPelangganData = null;
+let currentGeojsonData   = null;
+let buildingVisible      = false;
 
-export function isBuildingVisible() {
-    return buildingVisible;
+// Viewport rendering state
+let allPreparedBuildings = [];   // semua building sudah di-preprocess (bbox dihitung)
+let buildingLayerGroup   = null; // di-init saat pertama dipakai, bukan di level module
+let viewportRenderTimer  = null; // debounce timer
+
+export function isBuildingVisible() { return buildingVisible; }
+
+// ─── Viewport Rendering ──────────────────────────────────────────────────────
+
+function renderBuildingsInViewport() {
+    if (!buildingVisible || allPreparedBuildings.length === 0) return;
+
+    buildingLayerGroup.clearLayers();
+
+    const bounds = map.getBounds().pad(0.15); // 15% padding supaya tidak pop-in tiba-tiba
+    const minLat = bounds.getSouth(), maxLat = bounds.getNorth();
+    const minLng = bounds.getWest(),  maxLng = bounds.getEast();
+
+    let rendered = 0;
+    allPreparedBuildings.forEach(item => {
+        // Skip jika bbox tidak overlap dengan viewport
+        if (item.bbox) {
+            if (item.bbox.maxLat < minLat || item.bbox.minLat > maxLat) return;
+            if (item.bbox.maxLng < minLng || item.bbox.minLng > maxLng) return;
+        }
+        buildingLayerGroup.addLayer(createBuildingLayerFromPrepared(item));
+        rendered++;
+    });
+
+    console.log(`[viewport] Rendered ${rendered} / ${allPreparedBuildings.length} buildings`);
 }
 
+function scheduleViewportRender() {
+    clearTimeout(viewportRenderTimer);
+    viewportRenderTimer = setTimeout(renderBuildingsInViewport, 150); // debounce 150ms
+}
+
+// Attach map events untuk viewport rendering
+map.on('moveend zoomend', scheduleViewportRender);
+
+// ─── Toggle Building ─────────────────────────────────────────────────────────
 export function toggleBuildingLayer() {
-    if (!buildingLayerGroup) return;
-    
+    if (allPreparedBuildings.length === 0) return;
+
     if (buildingVisible) {
-        map.removeLayer(buildingLayerGroup);
+        if (buildingLayerGroup) map.removeLayer(buildingLayerGroup);
         buildingVisible = false;
     } else {
+        if (!buildingLayerGroup) buildingLayerGroup = L.layerGroup();
         buildingLayerGroup.addTo(map);
         buildingVisible = true;
+        renderBuildingsInViewport();
     }
     return buildingVisible;
 }
 
+// ─── Clear Map ───────────────────────────────────────────────────────────────
 export function clearMap() {
     Object.keys(currentLayers).forEach(cat => {
-        if (currentLayers[cat]) {
-            map.removeLayer(currentLayers[cat]);
-        }
+        if (currentLayers[cat]) map.removeLayer(currentLayers[cat]);
     });
     currentLayers = {};
-    
+
     if (buildingLayerGroup) {
         map.removeLayer(buildingLayerGroup);
         buildingLayerGroup = null;
     }
+    allPreparedBuildings = [];
     buildingVisible = false;
-    
-    if (currentLegend) {
-        map.removeControl(currentLegend);
-        currentLegend = null;
-    }
-    
-    if (currentLayerControl) {
-        map.removeControl(currentLayerControl);
-        currentLayerControl = null;
-    }
-    
-    Object.keys(categories).forEach(cat => {
-        categories[cat].count = 0;
-    });
-    
+
+    if (currentLegend)       { map.removeControl(currentLegend);       currentLegend = null; }
+    if (currentLayerControl) { map.removeControl(currentLayerControl); currentLayerControl = null; }
+
+    Object.keys(categories).forEach(cat => { categories[cat].count = 0; });
     clearBuildingPelangganMap();
 }
 
+// ─── Load GeoJSON ────────────────────────────────────────────────────────────
 export function loadGeoJSON(kecamatan) {
     clearMap();
 
-    // Ambil dari API (data tersimpan di MySQL), bukan file statis
-    const apiUrl = `/api/bangunan/${kecamatan}`;
-
-    fetch(apiUrl)
-        .then(response => {
-            if (!response.ok) {
-                return response.json().then(err => {
-                    throw new Error(err.error || `Gagal mengambil data: ${apiUrl}`);
-                });
-            }
-            return response.json();
+    fetch(`/api/bangunan/${kecamatan}`)
+        .then(res => {
+            if (!res.ok) return res.json().then(err => { throw new Error(err.error || `Gagal: ${kecamatan}`); });
+            return res.json();
         })
         .then(data => {
-            currentGeojsonData = data; 
-            
+            currentGeojsonData = data;
+
             Object.keys(categories).forEach(cat => {
                 currentLayers[cat] = L.layerGroup().addTo(map);
             });
 
             const { areas, buildings } = separateFeaturesIntoAreasAndBuildings(data.features);
+
+            // Render areas langsung (biasanya sedikit)
             processAreas(areas, currentLayers);
-            
-            // Building disimpan tapi belum ditampilkan
-            buildingLayerGroup = L.layerGroup();
-            buildingVisible = false;
-            processBuildings(buildings, currentLayers, currentPelangganData, buildingLayerGroup);
-            
-            // Update tombol show building
+
+            // Pre-process buildings: hitung bbox & pelanggan, tapi belum render
+            const { prepared, buildingWithPelangganCount } = prepareBuildingFeatures(buildings, currentPelangganData);
+            allPreparedBuildings = prepared;
+
             updateShowBuildingButton(false, buildings.length);
-            
+            updatePelangganBuildingCount(buildingWithPelangganCount);
+
             currentLegend = createLegendControl();
             currentLegend.addTo(map);
 
@@ -114,11 +133,12 @@ export function loadGeoJSON(kecamatan) {
             updateBuildingCountDisplay(kecamatanName, buildings.length);
 
             const bounds = L.geoJSON(data).getBounds();
-            const center = bounds.getCenter();
-            map.setView(center, 13);
+            map.setView(bounds.getCenter(), 13);
 
             currentLayerControl = createLayerControl(currentLayers);
             currentLayerControl.addTo(map);
+
+            console.log(`[loadGeoJSON] ${buildings.length} buildings pre-processed, belum dirender.`);
         })
         .catch(error => {
             console.error('Error loading GeoJSON:', error);
@@ -126,38 +146,37 @@ export function loadGeoJSON(kecamatan) {
         });
 }
 
+// ─── Update Buildings When Pelanggan Data Berubah ────────────────────────────
 export function updateBuildingsWithPelanggan(pelangganData) {
     currentPelangganData = pelangganData;
-    
+
     if (!currentGeojsonData) {
-        console.warn('[polygon.js] GeoJSON belum dimuat, tidak bisa update bangunan');
+        console.warn('[polygon.js] GeoJSON belum dimuat');
         return;
     }
-    
+
+    // Re-render areas
     Object.keys(currentLayers).forEach(cat => {
-        if (currentLayers[cat]) {
-            map.removeLayer(currentLayers[cat]);
-        }
+        if (currentLayers[cat]) map.removeLayer(currentLayers[cat]);
     });
-    
     Object.keys(categories).forEach(cat => {
         currentLayers[cat] = L.layerGroup().addTo(map);
         categories[cat].count = 0;
     });
-    
+
     const { areas, buildings } = separateFeaturesIntoAreasAndBuildings(currentGeojsonData.features);
-    
-    // Reset building layer group
-    if (buildingLayerGroup) {
-        map.removeLayer(buildingLayerGroup);
-    }
-    buildingLayerGroup = L.layerGroup();
-    buildingVisible = false;
-    
     processAreas(areas, currentLayers);
-    const buildingWithPelangganCount = processBuildings(buildings, currentLayers, currentPelangganData, buildingLayerGroup);
+
+    // Re-pre-process buildings dengan data pelanggan baru
+    if (buildingLayerGroup) map.removeLayer(buildingLayerGroup);
+    buildingLayerGroup = null;
+    buildingVisible = false;
+
+    const { prepared, buildingWithPelangganCount } = prepareBuildingFeatures(buildings, currentPelangganData);
+    allPreparedBuildings = prepared;
+
     updatePelangganBuildingCount(buildingWithPelangganCount);
     updateShowBuildingButton(false, buildings.length);
-    
-    console.log(`[polygon.js] Updated buildings: ${buildingWithPelangganCount} bangunan memiliki pelanggan`);
+
+    console.log(`[updateBuildingsWithPelanggan] ${buildingWithPelangganCount} bangunan punya pelanggan`);
 }
