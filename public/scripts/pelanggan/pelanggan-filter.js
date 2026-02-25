@@ -1,5 +1,5 @@
 import { getMap } from '../polygon/polygon.js';
-import { getPelangganData } from '../pelanggan/pelanggan.js';
+import { getPelangganData } from '../pelanggan/pelanggan-store.js';
 import { getCurrentFilters as getCategoryFilters } from './pelanggan-category-filter.js';
 import { getCurrentAddressFilter } from './pelanggan-address-filter.js';
 import { isPelangganInBuilding } from './building-pelanggan-matcher.js';

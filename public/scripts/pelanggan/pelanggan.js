@@ -25,33 +25,63 @@ import {
 import { updateAddressOptions } from '../components/pelanggan-filter-ui.js';
 import { getCurrentPeriod } from '../components/pelanggan-period-filter-ui.js';
 import { setPelangganLayerRef as setPelangganAddressLayerRef, getCurrentAddressFilter } from '../pelanggan/pelanggan-address-filter.js';
+import {
+    getPelangganData, isPelangganLayerVisible, getPelangganCount,
+    _setPelangganData, _setPelangganCount, _setIsPelangganVisible
+} from '../pelanggan/pelanggan-store.js';
+import {
+    onViewportChange,
+    offViewportChange,
+    getPaddedBounds,
+    buildSpatialIndex,
+    queryGrid
+} from '../utils/viewport-manager.js';
 
 
 let pelangganLayer = null;
 let labelLayer = null;
-let pelangganCount = 0;
-let isPelangganVisible = false;
-let pelangganData = [];
 let isDraggingEnabled = false;
 let currentKecamatan = null;
 
 // Map untuk pasangkan marker <-> labelMarker
 const markerLabelMap = new Map(); // key: marker instance, value: labelMarker instance
 
+// Spatial index untuk label viewport culling
+let markerSpatialIndex = null;
+
 function updateLabelVisibility() {
     if (!pelangganLayer || !labelLayer) return;
     const map = getMap();
     if (!map) return;
 
-    markerLabelMap.forEach((labelMarker, marker) => {
-        // getVisibleParent() -> marker itu sendiri kalau sudah unclustered,
-        // -> cluster icon kalau masih tergabung dalam cluster
+    const bounds = getPaddedBounds();
+
+    // Pakai spatial index kalau sudah dibangun — jauh lebih cepat dari iterasi semua marker
+    let markersToCheck;
+    if (markerSpatialIndex && bounds) {
+        markersToCheck = queryGrid(markerSpatialIndex, bounds);
+    } else {
+        // Fallback: iterasi semua (saat index belum siap)
+        markersToCheck = [];
+        markerLabelMap.forEach((_, marker) => markersToCheck.push(marker));
+    }
+
+    // Sembunyikan semua label dulu (hanya yang currently visible)
+    // — lebih cepat daripada cek satu-satu semua marker
+    const currentlyVisible = new Set();
+    labelLayer.eachLayer(l => currentlyVisible.add(l));
+    currentlyVisible.forEach(l => labelLayer.removeLayer(l));
+
+    // Tampilkan hanya label yang unclustered DAN ada di viewport
+    markersToCheck.forEach(marker => {
+        const labelMarker = markerLabelMap.get(marker);
+        if (!labelMarker) return;
+
         const visibleParent = pelangganLayer.getVisibleParent(marker);
         const isUnclustered = visibleParent === marker;
+
         if (isUnclustered) {
-            if (!labelLayer.hasLayer(labelMarker)) labelLayer.addLayer(labelMarker);
-        } else {
-            if (labelLayer.hasLayer(labelMarker)) labelLayer.removeLayer(labelMarker);
+            labelLayer.addLayer(labelMarker);
         }
     });
 }
@@ -60,20 +90,20 @@ function togglePelangganLayer() {
     const map = getMap();
     if (!map || !pelangganLayer) return;
 
-    if (isPelangganVisible) {
+    if (isPelangganLayerVisible()) {
         map.removeLayer(pelangganLayer);
         if (labelLayer) map.removeLayer(labelLayer);
-        isPelangganVisible = false;
+        _setIsPelangganVisible(false);
         console.log('[pelanggan.js] Layer pelanggan disembunyikan');
     } else {
         pelangganLayer.addTo(map);
         if (labelLayer) labelLayer.addTo(map);
         addPelangganLegend();
-        isPelangganVisible = true;
+        _setIsPelangganVisible(true);
         console.log('[pelanggan.js] Layer pelanggan ditampilkan');
     }
 
-    updateToggleButton(isPelangganVisible);
+    updateToggleButton(isPelangganLayerVisible());
 }
 
 function toggleDragMode() {
@@ -92,18 +122,14 @@ function toggleDragMode() {
     });
 
     // Always update legend mode, regardless of visibility
-    updateLegend(pelangganCount, isDraggingEnabled);
+    updateLegend(getPelangganCount(), isDraggingEnabled);
 
     updateDragButton(isDraggingEnabled);
     console.log(`[pelanggan.js] Drag mode ${isDraggingEnabled ? 'enabled' : 'disabled'}`);
 }
 
 function savePelangganCSV() {
-    // Filter data langsung dari pelangganData (array mentah),
-    // tanpa menyentuh marker/layer sama sekali.
-    // Pendekatan ini aman meski nanti pakai clustering atau perubahan rendering apapun.
 
-    // 1. Baca state semua filter yang sedang aktif
     const period      = getCurrentPeriod();
     const activeAddr  = getCurrentAddressFilter();
     const activeBlok  = getBlokFilter();
@@ -183,7 +209,7 @@ function savePelangganCSV() {
 }
 
 function addPelangganLegend() {
-    updateLegend(pelangganCount, isDraggingEnabled);
+    updateLegend(getPelangganCount(), isDraggingEnabled);
 }
 
 function addControlButtons() {
@@ -278,7 +304,7 @@ export async function loadPelanggan(periodFilter = {}) {
     }
 
     try {
-        const filterParams = { limit: 20000 };
+        const filterParams = {};
         if (periodFilter.bulan) filterParams.bulan = periodFilter.bulan;
         if (periodFilter.tahun) filterParams.tahun = periodFilter.tahun;
         
@@ -289,7 +315,6 @@ export async function loadPelanggan(periodFilter = {}) {
             throw new Error('API gagal: ' + (response.error || 'Unknown error'));
         }
 
-        // Remove old layer if exists
         if (pelangganLayer && map.hasLayer(pelangganLayer)) {
             map.removeLayer(pelangganLayer);
         }
@@ -298,9 +323,8 @@ export async function loadPelanggan(periodFilter = {}) {
         }
         markerLabelMap.clear();
 
-        // Konversi format DB (longitude/latitude) -> format legacy (Long/Lat)
         const rows = PelangganAPI.toLegacyFormat(response.data);
-        pelangganData = rows;
+        _setPelangganData(rows);
 
         pelangganLayer = L.markerClusterGroup({
             disableClusteringAtZoom: 18,
@@ -311,10 +335,13 @@ export async function loadPelanggan(periodFilter = {}) {
 
         // Update visibilitas label setiap kali animasi cluster selesai atau zoom berubah
         pelangganLayer.on('animationend', updateLabelVisibility);
-        map.on('zoomend', updateLabelVisibility);
+
+        // Daftarkan ke viewport manager (debounced) — unregister dulu kalau sudah ada
+        offViewportChange(updateLabelVisibility);
+        onViewportChange(updateLabelVisibility);
 
         labelLayer = L.layerGroup(); // label mulai kosong, diisi oleh updateLabelVisibility
-        pelangganCount = 0;
+        let count = 0;
         let skipped = 0;
 
         rows.forEach(row => {
@@ -331,11 +358,12 @@ export async function loadPelanggan(periodFilter = {}) {
             pelangganLayer.addLayer(marker);
             // labelMarker TIDAK langsung ditambahkan — dikelola oleh updateLabelVisibility()
 
-            pelangganCount++;
+            count++;
         });
+        _setPelangganCount(count);
 
         // Add layer back if it was visible before
-        if (isPelangganVisible) {
+        if (isPelangganLayerVisible()) {
             pelangganLayer.addTo(map);
             labelLayer.addTo(map);
         }
@@ -346,10 +374,19 @@ export async function loadPelanggan(periodFilter = {}) {
         }
 
         // Show the inline legend next to the Sidoarjo dropdown with the loaded count
-        updateLegend(pelangganCount, isDraggingEnabled);
+        updateLegend(getPelangganCount(), isDraggingEnabled);
 
         setPelangganLayerRef(pelangganLayer);
         setPelangganAddressLayerRef(pelangganLayer);
+
+        // Build spatial index untuk label viewport culling
+        const markerArray = [];
+        markerLabelMap.forEach((_, marker) => markerArray.push(marker));
+        markerSpatialIndex = buildSpatialIndex(markerArray, marker => {
+            const ll = marker.getLatLng();
+            return { lat: ll.lat, lng: ll.lng };
+        });
+        console.log(`[pelanggan.js] Spatial index built untuk ${markerArray.length} marker`);
         
         // Only add category filter control once (on first load)
         if (!document.querySelector('.pelanggan-category-filter-control')) {
@@ -359,14 +396,14 @@ export async function loadPelanggan(periodFilter = {}) {
         
         // Set layer reference and build markers map for category filter
         setPelangganCategoryLayerRef(pelangganLayer);
-        buildMarkersMap(pelangganData, pelangganLayer);
+        buildMarkersMap(getPelangganData(), pelangganLayer);
 
-        updateBuildingsWithPelanggan(pelangganData);
+        updateBuildingsWithPelanggan(getPelangganData());
 
         updateBlokOptions();
         updateAddressOptions();
 
-        console.log(`[pelanggan.js] Berhasil load ${pelangganCount} pelanggan dari DB.` +
+        console.log(`[pelanggan.js] Berhasil load ${getPelangganCount()} pelanggan dari DB.` +
             (skipped ? ` (${skipped} baris di-skip karena koordinat tidak valid)` : ''));
 
     } catch (err) {
@@ -379,14 +416,33 @@ export function setCurrentKecamatan(kecamatan) {
     console.log(`[pelanggan.js] Kecamatan aktif: ${kecamatan}`);
 }
 
-export function getPelangganData() {
-    return pelangganData;
+export function clearPelangganLayer() {
+    const map = getMap();
+
+    if (pelangganLayer) {
+        if (map && map.hasLayer(pelangganLayer)) map.removeLayer(pelangganLayer);
+        pelangganLayer = null;
+    }
+    if (labelLayer) {
+        if (map && map.hasLayer(labelLayer)) map.removeLayer(labelLayer);
+        labelLayer = null;
+    }
+
+    markerLabelMap.clear();
+    markerSpatialIndex = null;
+    _setPelangganData([]);
+    _setPelangganCount(0);
+    _setIsPelangganVisible(false);
+
+    setPelangganLayerRef(null);
+    setPelangganAddressLayerRef(null);
+    setPelangganCategoryLayerRef(null);
+
+    updateLegend(0, false);
+    updateToggleButton(false);
+
+    console.log('[pelanggan.js] Layer pelanggan di-reset.');
 }
 
-export function getPelangganCount() {
-    return pelangganCount;
-}
-
-export function isPelangganLayerVisible() {
-    return isPelangganVisible;
-}
+// Re-export dari store agar modul lain yang sudah import dari pelanggan.js tetap bisa pakai
+export { getPelangganData, getPelangganCount, isPelangganLayerVisible } from '../pelanggan/pelanggan-store.js';

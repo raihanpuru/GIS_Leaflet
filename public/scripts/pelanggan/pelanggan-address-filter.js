@@ -1,6 +1,9 @@
-import { getPelangganData } from './pelanggan.js';
+import { getPelangganData, isPelangganLayerVisible } from './pelanggan-store.js';
 import { getMap } from '../polygon/polygon.js';
-import { isPelangganLayerVisible } from './pelanggan.js';
+import {
+    clearFilteredBuildingLayers,
+    renderBlokHighlight
+} from './pelanggan-filter-render.js';
 
 let pelangganLayerRef = null;
 let currentFilter = null;
@@ -112,8 +115,12 @@ export function highlightBuildingsByAddress(address, geojsonData) {
     // Hide/show pelanggan markers
     filterPelangganMarkersByAddress(address);
 
-    // Pastikan layer cluster tampil di map saat filter aktif,
-    // meski tombol "Show Pelanggan" belum diaktifkan
+    // Render bangunan biru berdasarkan pelanggan yang ada di alamat ini
+    clearFilteredBuildingLayers();
+    if (geojsonData) {
+        renderBlokHighlight('_address_', filteredPelanggan, geojsonData, `Alamat: ${address}`);
+    }
+
     const map = getMap();
     if (map && pelangganLayerRef && !map.hasLayer(pelangganLayerRef)) {
         pelangganLayerRef.addTo(map);
@@ -128,9 +135,11 @@ export function clearBuildingHighlight() {
     console.log('[address-filter] Clearing address filter');
 
     currentFilter = null;
-    
-    // Show all pelanggan markers by adding them back to the cluster layer
+
+    // Hapus highlight bangunan biru
+    clearFilteredBuildingLayers();
     // Gunakan snapshot agar marker yang sudah diremove pun bisa dikembalikan
+    const map = getMap();
     if (pelangganLayerRef) {
         const markersToRestore = allMarkersSnapshot.length > 0
             ? allMarkersSnapshot
@@ -143,8 +152,7 @@ export function clearBuildingHighlight() {
         });
     }
 
-    // Jika tombol "Show Pelanggan" sedang OFF, sembunyikan kembali layer dari map
-    const map = getMap();
+    // Show all pelanggan markers by adding them back to the cluster layer
     if (map && pelangganLayerRef && !isPelangganLayerVisible()) {
         if (map.hasLayer(pelangganLayerRef)) {
             map.removeLayer(pelangganLayerRef);

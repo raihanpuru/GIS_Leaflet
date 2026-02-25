@@ -1,62 +1,45 @@
 import { initKecamatanDropdown } from '../polygon/kecamatan.js';
-import { loadGeoJSON, getMap, getCurrentGeojsonData, toggleBuildingLayer, isBuildingVisible } from '../polygon/polygon.js';
-import { loadPelanggan, setCurrentKecamatan } from '../pelanggan/pelanggan.js';
+import { loadGeoJSON, getMap, getCurrentGeojsonData } from '../polygon/polygon.js';
+import { loadPelanggan, setCurrentKecamatan, clearPelangganLayer } from '../pelanggan/pelanggan.js';
 import { createBlokFilterControl } from '../components/pelanggan-filter-ui.js';
 import { createPeriodFilterControl } from '../components/pelanggan-period-filter-ui.js';
 
 const AppConfig = {
-    defaultKecamatan: 'sidoarjo', 
-    autoLoadPelanggan: true
+    defaultKecamatan: 'sidoarjo',
 };
 
 let currentKecamatan = AppConfig.defaultKecamatan;
 
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Aplikasi Peta Sidoarjo dimulai...');
-    
+document.addEventListener('DOMContentLoaded', function () {
     const kecamatanSelect = document.getElementById('kecamatanSelect');
     if (kecamatanSelect) {
         initKecamatanDropdown(kecamatanSelect, handleKecamatanChange);
-        console.log('Dropdown kecamatan initialized');
     } else {
         console.error('Element #kecamatanSelect tidak ditemukan');
     }
-    
-    if (AppConfig.autoLoadPelanggan) {
-        setTimeout(() => {
-            loadPelanggan();
-            console.log('Pelanggan layer loaded');
-        }, 500);
-    }
-    
+
     if (AppConfig.defaultKecamatan) {
         loadGeoJSON(AppConfig.defaultKecamatan);
         setCurrentKecamatan(AppConfig.defaultKecamatan);
-        if (kecamatanSelect) {
-            kecamatanSelect.value = AppConfig.defaultKecamatan;
-        }
+        if (kecamatanSelect) kecamatanSelect.value = AppConfig.defaultKecamatan;
     }
-    
+
     setTimeout(() => {
         const map = getMap();
-        if (map) {
-                // Period filter sekarang bukan Leaflet control, langsung panggil fungsinya
-            createPeriodFilterControl();
-            
-            const blokFilterControl = createBlokFilterControl(getCurrentGeojsonData);
-            blokFilterControl.addTo(map);
-            
-            map.on('click', () => {});
-            console.log('Period filter control initialized');
-            console.log('Combined Blok + Alamat filter control initialized');
-        }
+        if (!map) return;
+
+        // Pelanggan hanya dimuat setelah user pilih bulan + tahun
+        createPeriodFilterControl({
+            onLoad:  (period) => loadPelanggan(period),
+            onClear: () => clearPelangganLayer(),
+        });
+
+        const blokFilterControl = createBlokFilterControl(getCurrentGeojsonData);
+        blokFilterControl.addTo(map);
     }, 600);
-    
-    console.log('Aplikasi siap digunakan!');
 });
 
 function handleKecamatanChange(kecamatan) {
-    console.log(`Memuat data kecamatan: ${kecamatan}`);
     currentKecamatan = kecamatan;
     loadGeoJSON(kecamatan);
     setCurrentKecamatan(kecamatan);

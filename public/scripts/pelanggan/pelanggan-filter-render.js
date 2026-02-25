@@ -1,14 +1,28 @@
 import { getMap } from '../polygon/polygon.js';
 import { isPelangganInBuilding } from './building-pelanggan-matcher.js';
+import {
+    onViewportChange,
+    offViewportChange,
+    getPaddedBounds,
+    buildBboxIndex,
+    queryBboxGrid
+} from '../utils/viewport-manager.js';
 
 const FILTER_BUILDING_COLOR = '#2196F3';
 let filteredBuildingLayers = [];
+
+// State untuk viewport re-render saat pan/zoom
+let _currentRenderState = null; // { type, blok, filteredPelanggan, geojsonData, filterDesc, bboxIndex }
 
 export function getFilteredBuildingLayers() {
     return filteredBuildingLayers;
 }
 
 export function clearFilteredBuildingLayers() {
+    // Unregister dari viewport manager supaya tidak re-render setelah filter dihapus
+    offViewportChange(_onViewportChangeForFilter);
+    _currentRenderState = null;
+
     const map = getMap();
     filteredBuildingLayers.forEach(layer => {
         if (map) map.removeLayer(layer);
@@ -16,20 +30,79 @@ export function clearFilteredBuildingLayers() {
     filteredBuildingLayers = [];
 }
 
+// Viewport change handler — re-render hanya yang masuk viewport
+function _onViewportChangeForFilter() {
+    if (!_currentRenderState) return;
+
+    const { type, blok, filteredPelanggan, geojsonData, filterDesc, bboxIndex } = _currentRenderState;
+    const map = getMap();
+    if (!map) return;
+
+    // Clear layer lama
+    filteredBuildingLayers.forEach(l => map.removeLayer(l));
+    filteredBuildingLayers = [];
+
+    if (type === 'blok') {
+        _renderBlokInViewport(blok, filteredPelanggan, geojsonData, filterDesc, bboxIndex);
+    } else if (type === 'nonPelanggan') {
+        _renderNonPelangganInViewport(geojsonData, filteredPelanggan, bboxIndex);
+    }
+}
+
 export function renderBlokHighlight(blok, filteredPelanggan, geojsonData, filterDesc = '') {
     const map = getMap();
     if (!map) return 0;
 
+    // Pre-compute bbox index dari semua building features — O(n) sekali
+    // Sehingga viewport query jadi O(k) dimana k = jumlah cell yg overlap
+    const candidateFeatures = geojsonData.features
+        .map((feature, index) => ({ feature, index }))
+        .filter(({ feature }) => feature.properties.building);
+
+    const bboxIndex = buildBboxIndex(candidateFeatures, ({ feature }) => {
+        try {
+            const b = L.geoJSON(feature).getBounds();
+            return {
+                minLat: b.getSouth(), maxLat: b.getNorth(),
+                minLng: b.getWest(),  maxLng: b.getEast()
+            };
+        } catch(e) { return null; }
+    });
+
+    // Simpan state untuk re-render saat viewport berubah
+    _currentRenderState = { type: 'blok', blok, filteredPelanggan, geojsonData, filterDesc, bboxIndex };
+
+    // Render pertama kali
+    const count = _renderBlokInViewport(blok, filteredPelanggan, geojsonData, filterDesc, bboxIndex);
+
+    // Register viewport listener (unregister dulu kalau sudah ada)
+    offViewportChange(_onViewportChangeForFilter);
+    onViewportChange(_onViewportChangeForFilter);
+
+    return count;
+}
+
+function _renderBlokInViewport(blok, filteredPelanggan, geojsonData, filterDesc, bboxIndex) {
+    const map = getMap();
+    if (!map) return 0;
+
+    const bounds = getPaddedBounds();
+
+    // Query grid — hanya kandidat building di viewport
+    const candidatesInViewport = queryBboxGrid(bboxIndex, bounds);
+
+    // Tentukan building mana yang mengandung pelanggan dari filteredPelanggan
     const buildingsToHighlight = new Set();
 
     filteredPelanggan.forEach(pelanggan => {
         const lat = parseFloat(pelanggan['Lat']);
         const lng = parseFloat(pelanggan['Long']);
-
         if (isNaN(lat) || isNaN(lng)) return;
 
-        geojsonData.features.forEach((feature, index) => {
-            if (!feature.properties.building) return;
+        // Skip pelanggan di luar viewport (optimasi tambahan)
+        if (bounds && !bounds.contains([lat, lng])) return;
+
+        candidatesInViewport.forEach(({ feature, index }) => {
             if (isPelangganInBuilding(lat, lng, feature)) {
                 buildingsToHighlight.add(index);
             }
@@ -38,7 +111,6 @@ export function renderBlokHighlight(blok, filteredPelanggan, geojsonData, filter
 
     buildingsToHighlight.forEach(index => {
         const feature = geojsonData.features[index];
-
         const layer = L.geoJSON(feature, {
             style: {
                 fillColor: FILTER_BUILDING_COLOR,
@@ -53,15 +125,14 @@ export function renderBlokHighlight(blok, filteredPelanggan, geojsonData, filter
                     const lng = parseFloat(p['Long']);
                     return isPelangganInBuilding(lat, lng, feature);
                 });
-
                 layer.bindPopup(buildBlokPopupHTML(blok, pelangganInBuilding, feature, filterDesc));
             }
         });
-
         layer.addTo(map);
         filteredBuildingLayers.push(layer);
     });
 
+    console.log(`[filter-render] Rendered ${buildingsToHighlight.size} / ${bboxIndex.indexed.length} buildings in viewport`);
     return buildingsToHighlight.size;
 }
 
@@ -69,19 +140,53 @@ export function renderNonPelangganHighlight(geojsonData, pelangganData) {
     const map = getMap();
     if (!map) return 0;
 
+    // Build bbox index untuk semua building
+    const candidateFeatures = geojsonData.features
+        .map((feature, index) => ({ feature, index }))
+        .filter(({ feature }) => feature.properties.building);
+
+    const bboxIndex = buildBboxIndex(candidateFeatures, ({ feature }) => {
+        try {
+            const b = L.geoJSON(feature).getBounds();
+            return {
+                minLat: b.getSouth(), maxLat: b.getNorth(),
+                minLng: b.getWest(),  maxLng: b.getEast()
+            };
+        } catch(e) { return null; }
+    });
+
+    // Simpan state untuk re-render saat pan/zoom
+    _currentRenderState = {
+        type: 'nonPelanggan',
+        filteredPelanggan: pelangganData, // dipakai sebagai "allPelanggan" untuk cek hasPelanggan
+        geojsonData,
+        bboxIndex
+    };
+
+    const count = _renderNonPelangganInViewport(geojsonData, pelangganData, bboxIndex);
+
+    offViewportChange(_onViewportChangeForFilter);
+    onViewportChange(_onViewportChangeForFilter);
+
+    return count;
+}
+
+function _renderNonPelangganInViewport(geojsonData, pelangganData, bboxIndex) {
+    const map = getMap();
+    if (!map) return 0;
+
+    const bounds = getPaddedBounds();
+    const candidatesInViewport = queryBboxGrid(bboxIndex, bounds);
+
     let nonPelangganCount = 0;
 
-    geojsonData.features.forEach(feature => {
-        if (!feature.properties.building) return;
-
+    candidatesInViewport.forEach(({ feature }) => {
         let hasPelanggan = false;
 
         for (let pelanggan of pelangganData) {
             const lat = parseFloat(pelanggan['Lat']);
             const lng = parseFloat(pelanggan['Long']);
-
             if (isNaN(lat) || isNaN(lng)) continue;
-
             if (isPelangganInBuilding(lat, lng, feature)) {
                 hasPelanggan = true;
                 break;
@@ -101,13 +206,13 @@ export function renderNonPelangganHighlight(geojsonData, pelangganData) {
                     layer.bindPopup(buildNonPelangganPopupHTML(feature, layer));
                 }
             });
-
             layer.addTo(map);
             filteredBuildingLayers.push(layer);
             nonPelangganCount++;
         }
     });
 
+    console.log(`[filter-render] Non-pelanggan: rendered ${nonPelangganCount} buildings in viewport`);
     return nonPelangganCount;
 }
 

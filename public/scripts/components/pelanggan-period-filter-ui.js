@@ -1,7 +1,4 @@
-import { 
-    getPelangganData,
-    loadPelanggan 
-} from '../pelanggan/pelanggan.js';
+import { loadPelanggan } from '../pelanggan/pelanggan.js';
 
 let currentPeriod = { bulan: null, tahun: null };
 
