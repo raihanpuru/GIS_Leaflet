@@ -158,10 +158,8 @@ export function updateBuildingCountDisplay(kecamatanName, buildingCount) {
         }
     }
     
-    if (infoDisplay) {
-        infoDisplay.innerHTML = `
-            <span style="color: #666;">${buildingCount.toLocaleString('id-ID')} bangunan</span>
-        `;
+     if (infoDisplay) {
+        infoDisplay.style.display = 'none';
     }
 }
 

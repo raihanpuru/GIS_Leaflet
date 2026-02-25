@@ -1,4 +1,5 @@
 import { loadPelanggan } from '../pelanggan/pelanggan.js';
+import { hideWelcomeModal } from '../utils/loading.js';
 
 let currentPeriod = { bulan: null, tahun: null };
 
@@ -132,6 +133,7 @@ export function createPeriodFilterControl() {
 
 function applyPeriodFilter(bulan, tahun) {
     console.log('[period-filter] Applying period filter:', { bulan, tahun });
+    hideWelcomeModal();
     
     // Reload pelanggan with period filter
     const params = new URLSearchParams();

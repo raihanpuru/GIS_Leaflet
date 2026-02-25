@@ -2,6 +2,7 @@ import { categories } from '../polygon/kategori.js';
 import { clearBuildingPelangganMap } from '../pelanggan/building-pelanggan-matcher.js';
 import { createLegendControl, createLayerControl, updateBuildingCountDisplay, updatePelangganBuildingCount, updateShowBuildingButton } from '../components/polygon-ui.js';
 import { processAreas, prepareBuildingFeatures, createBuildingLayerFromPrepared, separateFeaturesIntoAreasAndBuildings } from '../polygon/polygon-processor.js';
+import { showLoading, hideLoading } from '../utils/loading.js';
 
 const map = L.map('map').setView([-7.428, 112.72], 12);
 
@@ -101,6 +102,7 @@ export function clearMap() {
 // ─── Load GeoJSON ────────────────────────────────────────────────────────────
 export function loadGeoJSON(kecamatan) {
     clearMap();
+    showLoading('Memuat data peta...');
 
     fetch(`/api/bangunan/${kecamatan}`)
         .then(res => {
@@ -143,6 +145,9 @@ export function loadGeoJSON(kecamatan) {
         .catch(error => {
             console.error('Error loading GeoJSON:', error);
             alert(`Gagal memuat data untuk kecamatan: ${kecamatan}\n${error.message}`);
+        })
+        .finally(() => {
+            hideLoading();
         });
 }
 

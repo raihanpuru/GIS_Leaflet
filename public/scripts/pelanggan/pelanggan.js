@@ -36,6 +36,7 @@ import {
     buildSpatialIndex,
     queryGrid
 } from '../utils/viewport-manager.js';
+import { showLoading, hideLoading } from '../utils/loading.js';
 
 
 let pelangganLayer = null;
@@ -303,6 +304,8 @@ export async function loadPelanggan(periodFilter = {}) {
         return;
     }
 
+    showLoading('Memuat data pelanggan...');
+
     try {
         const filterParams = {};
         if (periodFilter.bulan) filterParams.bulan = periodFilter.bulan;
@@ -409,6 +412,8 @@ export async function loadPelanggan(periodFilter = {}) {
     } catch (err) {
         console.error('[pelanggan.js] Gagal load dari API:', err);
         alert('Gagal mengambil data pelanggan dari server.\nPastikan backend berjalan dan database terhubung.\n\nError: ' + err.message);
+    } finally {
+        hideLoading();
     }
 }
 export function setCurrentKecamatan(kecamatan) {

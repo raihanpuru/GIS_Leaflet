@@ -1,13 +1,3 @@
-/**
- * viewport-manager.js
- * Central manager untuk viewport-based rendering.
- *
- * Fitur:
- * - Debounced moveend/zoomend listener (single listener, banyak subscriber)
- * - Grid-based spatial index untuk lookup O(1) per cell vs O(n) brute force
- * - Padding viewport agar marker tidak pop-in mendadak saat pan
- */
-
 import { getMap } from '../polygon/polygon.js';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -22,7 +12,6 @@ let debounceTimer  = null;
 let isInitialized  = false;
 const subscribers  = new Set(); // callback() yang dipanggil saat viewport berubah
 
-// Spatial grid: key = "gridX:gridY", value = array index ke `indexedItems`
 let spatialGrid    = new Map();
 let indexedItems   = [];       // { item, bbox: {minLat,maxLat,minLng,maxLng} }[]
 
@@ -191,9 +180,6 @@ export function queryGrid(spatialIndex, bounds) {
 }
 
 /**
- * Build spatial index khusus untuk bbox-based items (bangunan GeoJSON).
- * Mendaftarkan item ke semua grid cell yang di-overlap oleh bboxnya.
- *
  * @param {Array} items          - array data asli dengan property bbox
  * @param {Function} getBbox     - fn(item) => {minLat, maxLat, minLng, maxLng} | null
  * @returns {Object}             - bboxIndex untuk queryBboxGrid()
@@ -227,8 +213,6 @@ export function buildBboxIndex(items, getBbox) {
 }
 
 /**
- * Query bbox-based spatial index — kembalikan items yang overlap viewport.
- *
  * @param {{ grid: Map, indexed: Array }} bboxIndex
  * @param {L.LatLngBounds} bounds
  * @returns {Array}

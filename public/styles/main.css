@@ -91,3 +91,74 @@ body {
     font-weight: bold;
     color: #2196F3;
 }
+/* ─── Loading Overlay ──────────────────────────────────────────────────────── */
+#loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+#loading-overlay.visible {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.loading-box {
+    background: #fff;
+    border-radius: 12px;
+    padding: 32px 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 5px solid #e0e0e0;
+    border-top-color: #2196F3;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+    font-size: 15px;
+    font-weight: 600;
+    color: #444;
+    letter-spacing: 0.3px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+
+/* ─── Welcome Info Box ─────────────────────────────────────────────────────── */
+#welcome-info {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 12px;
+    z-index: 1001;
+    background: #fff;
+    border: 2px solid #333;
+    padding: 8px 24px;
+    font-size: 14px;
+    color: #333;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+#welcome-info.hiding {
+    opacity: 0;
+}

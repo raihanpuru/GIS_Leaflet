@@ -3,6 +3,7 @@ import { loadGeoJSON, getMap, getCurrentGeojsonData } from '../polygon/polygon.j
 import { loadPelanggan, setCurrentKecamatan, clearPelangganLayer } from '../pelanggan/pelanggan.js';
 import { createBlokFilterControl } from '../components/pelanggan-filter-ui.js';
 import { createPeriodFilterControl } from '../components/pelanggan-period-filter-ui.js';
+import { showWelcomeModal } from '../utils/loading.js';
 
 const AppConfig = {
     defaultKecamatan: 'sidoarjo',
@@ -11,6 +12,8 @@ const AppConfig = {
 let currentKecamatan = AppConfig.defaultKecamatan;
 
 document.addEventListener('DOMContentLoaded', function () {
+    showWelcomeModal();
+
     const kecamatanSelect = document.getElementById('kecamatanSelect');
     if (kecamatanSelect) {
         initKecamatanDropdown(kecamatanSelect, handleKecamatanChange);
