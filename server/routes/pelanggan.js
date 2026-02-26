@@ -160,6 +160,40 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PATCH /api/pelanggan/by-nosambungan/:nosambungan - Update koordinat semua periode
+router.patch('/by-nosambungan/:nosambungan', async (req, res) => {
+  try {
+    const { nosambungan } = req.params;
+    const { latitude, longitude } = req.body;
+
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'latitude dan longitude wajib diisi',
+      });
+    }
+
+    const affectedRows = await Pelanggan.updateCoordsByNosambungan(
+      nosambungan,
+      parseFloat(latitude),
+      parseFloat(longitude)
+    );
+
+    res.json({
+      success: true,
+      affectedRows,
+      message: `${affectedRows} record diupdate (semua periode)`,
+    });
+  } catch (error) {
+    console.error('Error updating coords by nosambungan:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update coordinates',
+      message: error.message,
+    });
+  }
+});
+
 // PUT /api/pelanggan/:id - Update pelanggan
 router.put('/:id', async (req, res) => {
   try {

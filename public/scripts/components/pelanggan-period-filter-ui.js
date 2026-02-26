@@ -1,5 +1,5 @@
 import { loadPelanggan } from '../pelanggan/pelanggan.js';
-import { hideWelcomeModal } from '../utils/loading.js';
+import { hideWelcomeModal, showLoading } from '../utils/loading.js';
 
 let currentPeriod = { bulan: null, tahun: null };
 
@@ -134,19 +134,14 @@ export function createPeriodFilterControl() {
 function applyPeriodFilter(bulan, tahun) {
     console.log('[period-filter] Applying period filter:', { bulan, tahun });
     hideWelcomeModal();
-    
-    // Reload pelanggan with period filter
-    const params = new URLSearchParams();
-    if (bulan) params.append('bulan', bulan);
-    if (tahun) params.append('tahun', tahun);
-    
-    const queryString = params.toString();
-    const url = queryString ? `/api/pelanggan?${queryString}` : '/api/pelanggan';
-    
-    console.log('[period-filter] Fetching from:', url);
-    
-    // Trigger reload
-    loadPelanggan({ bulan, tahun });
+
+    // Tampilkan loading di sini — masih dalam onchange event handler,
+    // jadi browser akan render overlay saat event selesai
+    showLoading('Memuat data pelanggan...');
+
+    // setTimeout(0): yield keluar dari onchange event handler
+    // agar browser sempat repaint overlay sebelum loadPelanggan (dan fetch) jalan
+    setTimeout(() => loadPelanggan({ bulan, tahun }), 0);
 }
 
 function updateFilterDescription(bulan, tahun, descContainer) {

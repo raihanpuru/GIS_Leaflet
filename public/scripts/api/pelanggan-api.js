@@ -85,6 +85,14 @@ export class PelangganAPI {
         });
     }
 
+    // Update koordinat semua periode berdasarkan nosambungan
+    async updateCoordsByNosambungan(nosambungan, latitude, longitude) {
+        return this.request(`/pelanggan/by-nosambungan/${encodeURIComponent(nosambungan)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ latitude, longitude }),
+        });
+    }
+
     // Update pelanggan
     async update(id, data) {
         return this.request(`/pelanggan/${id}`, {

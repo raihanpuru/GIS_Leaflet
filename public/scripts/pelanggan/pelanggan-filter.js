@@ -14,19 +14,69 @@ let currentFilter = null;
 let pelangganLayerRef = null;
 // Snapshot semua marker agar restore bisa dilakukan meski marker sudah di-removeLayer()
 let allMarkersSnapshot = [];
+// Map dari marker object ke row data — untuk lookup O(1) tanpa koordinat matching
+let _markerToRow = new Map();
 
 export function setPelangganLayerRef(layer) {
     pelangganLayerRef = layer;
-    allMarkersSnapshot = [];
-    if (layer) {
+    if (!layer) {
+        allMarkersSnapshot = [];
+        _markerToRow = new Map();
+    } else if (allMarkersSnapshot.length === 0) {
         layer.eachLayer(l => {
             if (l instanceof L.Marker) allMarkersSnapshot.push(l);
         });
     }
 }
 
+// Dipanggil dari updateMarkerVisibility saat marker baru masuk viewport
+export function addToMarkersSnapshot(markers, rowEntries) {
+    markers.forEach((m, i) => {
+        if (m instanceof L.Marker && !allMarkersSnapshot.includes(m)) {
+            allMarkersSnapshot.push(m);
+            if (rowEntries && rowEntries[i]) {
+                _markerToRow.set(m, rowEntries[i].row);
+            }
+        }
+    });
+}
+
+// Cek apakah marker harus tampil berdasarkan semua filter aktif
+function markerShouldShow(marker, blok) {
+    const row = _markerToRow.get(marker);
+    if (!row) return blok ? false : true; // tidak ada data row, hide kalau ada filter
+
+    const activeAddress   = getCurrentAddressFilter();
+    const catFilters      = getCategoryFilters();
+
+    if (activeAddress && (!row.alamat || row.alamat.trim() !== activeAddress)) return false;
+
+    if (blok && blok !== 'NON_PELANGGAN') {
+        const m = row['noalamat'] && row['noalamat'].match(/^([A-Z]+)/);
+        if (!m || m[1] !== blok) return false;
+    }
+
+    if (catFilters.usage !== 'all') {
+        const pakai = parseInt(row.pakai) || 0;
+        if (catFilters.usage === 'low'  && pakai >= 20) return false;
+        if (catFilters.usage === 'high' && pakai < 20)  return false;
+    }
+
+    if (catFilters.status !== 'all') {
+        const lunas = parseInt(row.lunas) || 0;
+        if (catFilters.status === 'lunas' && lunas !== 1) return false;
+        if (catFilters.status === 'belum' && lunas === 1) return false;
+    }
+
+    return true;
+}
+
 export function getCurrentFilter() {
     return currentFilter;
+}
+
+export function getAllMarkersSnapshot() {
+    return allMarkersSnapshot;
 }
 
 function extractBlok(noalamat) {
@@ -81,12 +131,8 @@ function filterPelangganByBlok(blok) {
 
 function filterPelangganMarkers(blok) {
     if (!pelangganLayerRef) return;
-
-    const pelangganData = getPelangganData();
     const map = getMap();
-    const activeAddress = getCurrentAddressFilter();
 
-    // Gunakan snapshot agar marker yang sudah diremove pun bisa di-iterate
     const markersToIterate = allMarkersSnapshot.length > 0
         ? allMarkersSnapshot
         : (() => { const arr = []; pelangganLayerRef.eachLayer(l => { if (l instanceof L.Marker) arr.push(l); }); return arr; })();
@@ -94,35 +140,16 @@ function filterPelangganMarkers(blok) {
     markersToIterate.forEach(layer => {
         if (!(layer instanceof L.Marker)) return;
 
-        let shouldShow = true;
-
-        if (blok && blok !== 'NON_PELANGGAN') {
-            const latlng = layer.getLatLng();
-            const pelanggan = pelangganData.find(p => {
-                const lat = parseFloat(p['Lat']);
-                const lng = parseFloat(p['Long']);
-                return Math.abs(lat - latlng.lat) < 0.000001 &&
-                       Math.abs(lng - latlng.lng) < 0.000001;
-            });
-
-            if (pelanggan) {
-                const pelangganBlok = extractBlok(pelanggan['noalamat']);
-                const blokMatch = pelangganBlok === blok;
-                const addressMatch = !activeAddress ||
-                    (pelanggan.alamat && pelanggan.alamat.trim() === activeAddress);
-                shouldShow = blokMatch && addressMatch;
-            } else {
-                shouldShow = false;
-            }
-        } else if (blok === 'NON_PELANGGAN') {
-            shouldShow = false;
-        }
+        const shouldShow = blok === 'NON_PELANGGAN' ? false : markerShouldShow(layer, blok);
 
         if (map) {
+            const isInLayer = pelangganLayerRef.hasLayer(layer);
+            const isInMap   = map.hasLayer(layer);
             if (shouldShow) {
-                if (!pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.addLayer(layer);
+                if (!isInLayer && !isInMap) pelangganLayerRef.addLayer(layer);
             } else {
-                if (pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.removeLayer(layer);
+                if (isInLayer) pelangganLayerRef.removeLayer(layer);
+                if (isInMap)   map.removeLayer(layer);
             }
         } else {
             layer.setOpacity(shouldShow ? 1 : 0);
@@ -137,35 +164,24 @@ export function clearBuildingHighlight() {
     clearFilteredBuildingLayers();
     currentFilter = null;
 
-    const activeAddress = getCurrentAddressFilter();
-
-    // Gunakan snapshot agar marker yang sudah di-removeLayer() pun bisa dikembalikan
     const markersToRestore = allMarkersSnapshot.length > 0
         ? allMarkersSnapshot
         : (() => { const arr = []; if (pelangganLayerRef) pelangganLayerRef.eachLayer(l => { if (l instanceof L.Marker) arr.push(l); }); return arr; })();
 
     if (pelangganLayerRef && map) {
-        const pelangganData = getPelangganData();
         markersToRestore.forEach(layer => {
             if (!(layer instanceof L.Marker)) return;
 
-            if (!activeAddress) {
-                if (!pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.addLayer(layer);
+            // null blok = tidak ada filter blok, cek alamat + category saja
+            const shouldShow  = markerShouldShow(layer, null);
+            const isInLayer   = pelangganLayerRef.hasLayer(layer);
+            const isInMap     = map.hasLayer(layer);
+
+            if (shouldShow) {
+                if (!isInLayer && !isInMap) pelangganLayerRef.addLayer(layer);
             } else {
-                const latlng = layer.getLatLng();
-                const pelanggan = pelangganData.find(p => {
-                    const lat = parseFloat(p['Lat']);
-                    const lng = parseFloat(p['Long']);
-                    return Math.abs(lat - latlng.lat) < 0.000001 &&
-                           Math.abs(lng - latlng.lng) < 0.000001;
-                });
-                const shouldShow = pelanggan && pelanggan.alamat &&
-                                   pelanggan.alamat.trim() === activeAddress;
-                if (shouldShow) {
-                    if (!pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.addLayer(layer);
-                } else {
-                    if (pelangganLayerRef.hasLayer(layer)) pelangganLayerRef.removeLayer(layer);
-                }
+                if (isInLayer) pelangganLayerRef.removeLayer(layer);
+                if (isInMap)   map.removeLayer(layer);
             }
         });
     }

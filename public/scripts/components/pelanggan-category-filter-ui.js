@@ -45,11 +45,16 @@ function updateCategoryFilterInBlokFilter() {
 }
 
 function refreshCurrentBlokFilter() {
-    // Trigger refresh of blok filter if active
+    // Refresh blok filter jika aktif
     const blokSelect = document.getElementById('blokFilterSelect');
     if (blokSelect && blokSelect.value) {
-        // Trigger change event to refresh the filter
         blokSelect.dispatchEvent(new Event('change'));
+        return;
+    }
+    // Refresh address filter jika aktif (tapi tidak ada blok)
+    const addressSelect = document.getElementById('addressFilterSelect');
+    if (addressSelect && addressSelect.value) {
+        addressSelect.dispatchEvent(new Event('change'));
     }
 }
 

@@ -73,12 +73,12 @@ async function importCSV(filePath) {
       totalRows++;
 
       try {
-        const bulan = parseInteger(row.bulan);
-        const tahun = parseInteger(row.tahun);
-        const nosambungan = cleanValue(row.nosambungan);
+        const bulan = parseInteger(row.bulan) ?? 12;
+        const tahun = parseInteger(row.tahun) ?? 2025;
+        const nosambungan = cleanValue(row.nosambungan)?.replace(/\/I +\//, '/I  /') ?? null;
         const idpelanggan = cleanValue(row.idpelanggan);
         const nopelanggan = cleanValue(row.nopelanggan);
-        const nama = cleanValue(row.nama);
+        const nama = cleanValue(row.nama) ?? '';
         const alamat = cleanValue(row.alamat);
         const noalamat = cleanValue(row.noalamat);
         const pakai = parseInteger(row.pakai);

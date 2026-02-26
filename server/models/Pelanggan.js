@@ -196,36 +196,52 @@ class Pelanggan {
 
   // Update pelanggan
   static async update(id, data) {
-    const query = `
-      UPDATE pelanggan SET
-        nosambungan = COALESCE(?, nosambungan),
-        idpelanggan = COALESCE(?, idpelanggan),
-        nopelanggan = COALESCE(?, nopelanggan),
-        nama = COALESCE(?, nama),
-        alamat = COALESCE(?, alamat),
-        noalamat = COALESCE(?, noalamat),
-        nourut = COALESCE(?, nourut),
-        longitude = COALESCE(?, longitude),
-        latitude = COALESCE(?, latitude),
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `;
+    // Build dynamic SET clause - hanya update field yang dikirim (tidak undefined)
+    const fieldMap = {
+      nosambungan: data.nosambungan,
+      idpelanggan: data.idpelanggan,
+      nopelanggan: data.nopelanggan,
+      nama:        data.nama,
+      alamat:      data.alamat,
+      noalamat:    data.noalamat,
+      nourut:      data.nourut,
+      longitude:   data.longitude,
+      latitude:    data.latitude,
+    };
 
-    const values = [
-      data.nosambungan,
-      data.idpelanggan,
-      data.nopelanggan,
-      data.nama,
-      data.alamat,
-      data.noalamat,
-      data.nourut,
-      data.longitude,
-      data.latitude,
-      id,
-    ];
+    const setClauses = [];
+    const values = [];
+
+    for (const [col, val] of Object.entries(fieldMap)) {
+      if (val !== undefined) {
+        setClauses.push(`${col} = ?`);
+        values.push(val);
+      }
+    }
+
+    if (setClauses.length === 0) {
+      // Tidak ada field yang perlu diupdate
+      return this.getById(id);
+    }
+
+    setClauses.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+
+    const query = `UPDATE pelanggan SET ${setClauses.join(', ')} WHERE id = ?`;
 
     await db.query(query, values);
     return this.getById(id);
+  }
+
+  // Update koordinat semua record dengan nosambungan yang sama (semua periode)
+  static async updateCoordsByNosambungan(nosambungan, latitude, longitude) {
+    const query = `
+      UPDATE pelanggan 
+      SET longitude = ?, latitude = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE nosambungan = ?
+    `;
+    const result = await db.query(query, [longitude, latitude, nosambungan]);
+    return result.rows.affectedRows;
   }
 
   // Delete pelanggan

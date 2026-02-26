@@ -111,6 +111,9 @@ export function buildPopup(row) {
 }
 
 export function buildLabel(nama) {
+    // Label nama pelanggan dinonaktifkan untuk performa
+    return L.divIcon({ html: '', iconSize: [0, 0] });
+
     if (!nama || nama === '-' || nama === '') {
         return L.divIcon({ html: '', iconSize: [0, 0] });
     }
@@ -262,6 +265,43 @@ export function createControlButtons(callbacks) {
         container.appendChild(btnDrag);
         container.appendChild(btnSave);
 
+        // Button Fix Koordinat — hidden by default, muncul kalau ada data invalid
+        const btnFixKoord = L.DomUtil.create('button', 'leaflet-fix-koord-btn');
+        btnFixKoord.id = 'fixKoordinat';
+        btnFixKoord.innerHTML = '⚠ Fix Koordinat';
+        btnFixKoord.style.cssText = buttonStyle('#e65100', '#e65100');
+        btnFixKoord.style.display = 'none';
+        addHoverEffect(btnFixKoord);
+        btnFixKoord.onclick = callbacks.onFixKoordinat || (() => {});
+        L.DomEvent.disableClickPropagation(btnFixKoord);
+        container.appendChild(btnFixKoord);
+
+        // Panel dropdown Fix Koordinat — hidden by default
+        const fixPanel = L.DomUtil.create('div', 'fix-koord-panel');
+        fixPanel.id = 'fixKoordPanel';
+        fixPanel.style.cssText = `
+            display: none;
+            background: #fff;
+            border: 2px solid #e65100;
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 12px;
+            font-family: inherit;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            min-width: 200px;
+        `;
+        fixPanel.innerHTML = `
+            <div style="font-weight:600; color:#e65100; margin-bottom:6px;">Pilih Pelanggan</div>
+            <select id="fixKoordSelect" style="width:100%; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:12px; margin-bottom:8px;">
+                <option value="">-- Pilih --</option>
+            </select>
+            <div id="fixKoordInfo" style="color:#666; font-size:11px; margin-bottom:6px; display:none;"></div>
+            <div style="color:#888; font-size:11px;">Klik titik di peta untuk set koordinat baru</div>
+        `;
+        L.DomEvent.disableClickPropagation(fixPanel);
+        L.DomEvent.disableScrollPropagation(fixPanel);
+        container.appendChild(fixPanel);
+
         return container;
     };
 
@@ -295,5 +335,57 @@ export function updateDragButton(isDragging) {
             btn.style.borderColor = '#666';
             btn.style.color = '#666';
         }
+    }
+}
+export function showFixKoordButton(invalidPelanggan) {
+    const btn = document.getElementById('fixKoordinat');
+    const panel = document.getElementById('fixKoordPanel');
+    if (!btn) return;
+
+    if (invalidPelanggan.length > 0) {
+        btn.style.display = '';
+        btn.innerHTML = `⚠ Fix Koordinat (${invalidPelanggan.length})`;
+
+        // Populate dropdown
+        const select = document.getElementById('fixKoordSelect');
+        if (select) {
+            select.innerHTML = '<option value="">-- Pilih Pelanggan --</option>';
+            invalidPelanggan.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.nosambungan;
+                opt.textContent = `${p.noalamat} - ${p.nama || '-'}`;
+                opt.dataset.nosambungan = p.nosambungan;
+                select.appendChild(opt);
+            });
+        }
+    } else {
+        btn.style.display = 'none';
+        if (panel) panel.style.display = 'none';
+    }
+}
+
+export function toggleFixKoordPanel(onSelectChange) {
+    const panel = document.getElementById('fixKoordPanel');
+    if (!panel) return;
+
+    const isVisible = panel.style.display !== 'none';
+    panel.style.display = isVisible ? 'none' : '';
+
+    if (!isVisible && onSelectChange) {
+        const select = document.getElementById('fixKoordSelect');
+        if (select) {
+            select.onchange = () => onSelectChange(select.value);
+        }
+    }
+}
+
+export function updateFixKoordInfo(text) {
+    const info = document.getElementById('fixKoordInfo');
+    if (!info) return;
+    if (text) {
+        info.textContent = text;
+        info.style.display = '';
+    } else {
+        info.style.display = 'none';
     }
 }
