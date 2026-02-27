@@ -4,6 +4,11 @@ import {
     clearFilteredBuildingLayers,
     renderBlokHighlight
 } from './pelanggan-filter-render.js';
+import { groupAddresses, buildAddressLookup, matchesByGroup } from './pelanggan-address-grouper.js';
+
+// Cache grup dan lookup — di-rebuild tiap kali data berubah
+let _addressGroups = [];
+let _addressLookup = new Map();
 
 let pelangganLayerRef = null;
 let currentFilter = null;
@@ -22,66 +27,70 @@ export function setPelangganLayerRef(layer) {
     }
 }
 
-export function getAvailableAddresses() {
+function rebuildGroups() {
     const pelangganData = getPelangganData();
-    
     if (!pelangganData || pelangganData.length === 0) {
-        console.log('[address-filter] No pelanggan data available');
-        return [];
+        _addressGroups = [];
+        _addressLookup = new Map();
+        return;
     }
-
-    // Mengambil semua alamat unik dari data pelanggan
-    const addresses = new Set();
-    pelangganData.forEach(p => {
-        if (p.alamat && p.alamat.trim()) {
-            addresses.add(p.alamat.trim());
-        }
-    });
-
-    const addressArray = Array.from(addresses).sort();
-    console.log('[address-filter] Available addresses:', addressArray);
-    return addressArray;
+    const rawAddresses = [...new Set(
+        pelangganData.map(p => p.alamat && p.alamat.trim()).filter(Boolean)
+    )];
+    _addressGroups = groupAddresses(rawAddresses);
+    _addressLookup = buildAddressLookup(_addressGroups);
+    console.log('[address-filter] Address groups:', _addressGroups.map(g =>
+        `"${g.label}" (${g.members.length} varian: ${g.members.join(', ')})`
+    ));
 }
 
-function filterPelangganMarkersByAddress(address) {
+export function getAvailableAddresses() {
+    rebuildGroups();
+    // Return label grup, bukan raw address
+    return _addressGroups.map(g => g.label);
+}
+
+export function getAddressGroups() {
+    return _addressGroups;
+}
+
+function filterPelangganMarkersByAddress(groupLabel) {
     if (!pelangganLayerRef) {
         console.log('[address-filter] No pelanggan layer reference');
         return;
     }
-    
+
     const pelangganData = getPelangganData();
     const map = getMap();
-    
+
     if (!map) {
         console.log('[address-filter] Map not available');
         return;
     }
 
-    // Gunakan snapshot agar marker yang sudah diremove pun bisa di-iterate
     const markersToIterate = allMarkersSnapshot.length > 0
         ? allMarkersSnapshot
         : (() => { const arr = []; pelangganLayerRef.eachLayer(l => { if (l instanceof L.Marker) arr.push(l); }); return arr; })();
 
     markersToIterate.forEach(layer => {
         let shouldShow = true;
-        
-        if (address) {
+
+        if (groupLabel) {
             const latlng = layer.getLatLng();
             const pelanggan = pelangganData.find(p => {
-                const lat = parseFloat(p['Lat']);
-                const lng = parseFloat(p['Long']);
-                return Math.abs(lat - latlng.lat) < 0.000001 && 
+                const lat = parseFloat(p['Lat'] || p.latitude);
+                const lng = parseFloat(p['Long'] || p.longitude);
+                return Math.abs(lat - latlng.lat) < 0.000001 &&
                        Math.abs(lng - latlng.lng) < 0.000001;
             });
-            
+
             if (pelanggan) {
-                shouldShow = (pelanggan.alamat && pelanggan.alamat.trim() === address);
+                shouldShow = matchesByGroup(pelanggan.alamat && pelanggan.alamat.trim(), groupLabel, _addressLookup);
             } else {
                 shouldShow = false;
             }
         }
-        
-        // Benar-benar remove/add marker dari cluster layer, bukan dari map langsung
+
         if (shouldShow) {
             if (!pelangganLayerRef.hasLayer(layer)) {
                 pelangganLayerRef.addLayer(layer);
@@ -104,18 +113,21 @@ export function highlightBuildingsByAddress(address, geojsonData) {
     currentFilter = address;
     const pelangganData = getPelangganData();
 
-    // Filter pelanggan berdasarkan alamat yang dipilih
-    const filteredPelanggan = pelangganData.filter(p => 
-        p.alamat && p.alamat.trim() === address
+    // Pastikan grup sudah dibangun
+    if (_addressLookup.size === 0) rebuildGroups();
+
+    // Filter pelanggan berdasarkan grup alamat yang dipilih
+    const filteredPelanggan = pelangganData.filter(p =>
+        matchesByGroup(p.alamat && p.alamat.trim(), address, _addressLookup)
     );
 
-    console.log(`[address-filter] Filtering by address: ${address}`);
-    console.log(`[address-filter] Found ${filteredPelanggan.length} pelanggan with address "${address}"`);
+    console.log(`[address-filter] Filtering by group: ${address}`);
+    console.log(`[address-filter] Found ${filteredPelanggan.length} pelanggan in group "${address}"`);
 
     // Hide/show pelanggan markers
     filterPelangganMarkersByAddress(address);
 
-    // Render bangunan biru berdasarkan pelanggan yang ada di alamat ini
+    // Render bangunan biru berdasarkan pelanggan yang ada di grup alamat ini
     clearFilteredBuildingLayers();
     if (geojsonData) {
         renderBlokHighlight('_address_', filteredPelanggan, geojsonData, `Alamat: ${address}`);

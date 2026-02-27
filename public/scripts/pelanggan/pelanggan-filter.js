@@ -1,7 +1,8 @@
 import { getMap } from '../polygon/polygon.js';
 import { getPelangganData } from '../pelanggan/pelanggan-store.js';
 import { getCurrentFilters as getCategoryFilters } from './pelanggan-category-filter.js';
-import { getCurrentAddressFilter } from './pelanggan-address-filter.js';
+import { getCurrentAddressFilter, getAddressGroups } from './pelanggan-address-filter.js';
+import { buildAddressLookup, matchesByGroup } from './pelanggan-address-grouper.js';
 import { isPelangganInBuilding } from './building-pelanggan-matcher.js';
 import {
     clearFilteredBuildingLayers,
@@ -49,7 +50,10 @@ function markerShouldShow(marker, blok) {
     const activeAddress   = getCurrentAddressFilter();
     const catFilters      = getCategoryFilters();
 
-    if (activeAddress && (!row.alamat || row.alamat.trim() !== activeAddress)) return false;
+    if (activeAddress) {
+        const lookup = buildAddressLookup(getAddressGroups());
+        if (!matchesByGroup(row.alamat && row.alamat.trim(), activeAddress, lookup)) return false;
+    }
 
     if (blok && blok !== 'NON_PELANGGAN') {
         const m = row['noalamat'] && row['noalamat'].match(/^([A-Z]+)/);
@@ -88,9 +92,10 @@ function extractBlok(noalamat) {
 export function getAvailableBloks(filterByAddress = null) {
     const pelangganData = getPelangganData();
     const blokSet = new Set();
+    const lookup = filterByAddress ? buildAddressLookup(getAddressGroups()) : null;
 
     pelangganData.forEach(pelanggan => {
-        if (filterByAddress && pelanggan.alamat && pelanggan.alamat.trim() !== filterByAddress) {
+        if (filterByAddress && !matchesByGroup(pelanggan.alamat && pelanggan.alamat.trim(), filterByAddress, lookup)) {
             return;
         }
         const blok = extractBlok(pelanggan['noalamat']);

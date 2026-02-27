@@ -28,7 +28,8 @@ import {
 } from '../pelanggan/pelanggan-category-filter.js';
 import { updateAddressOptions } from '../components/pelanggan-filter-ui.js';
 import { getCurrentPeriod } from '../components/pelanggan-period-filter-ui.js';
-import { setPelangganLayerRef as setPelangganAddressLayerRef, getCurrentAddressFilter } from '../pelanggan/pelanggan-address-filter.js';
+import { setPelangganLayerRef as setPelangganAddressLayerRef, getCurrentAddressFilter, getAddressGroups } from '../pelanggan/pelanggan-address-filter.js';
+import { buildAddressLookup, matchesByGroup } from '../pelanggan/pelanggan-address-grouper.js';
 import {
     getPelangganData, isPelangganLayerVisible, getPelangganCount,
     _setPelangganData, _setPelangganCount, _setIsPelangganVisible
@@ -105,7 +106,8 @@ function updateMarkerVisibility() {
             let shouldShow = true;
 
             if (activeAddress) {
-                if (!p.alamat || p.alamat.trim() !== activeAddress) shouldShow = false;
+                const lookup = buildAddressLookup(getAddressGroups());
+                if (!matchesByGroup(p.alamat && p.alamat.trim(), activeAddress, lookup)) shouldShow = false;
             }
             if (shouldShow && activeBlok && activeBlok !== 'NON_PELANGGAN') {
                 const m = p['noalamat'] && p['noalamat'].match(/^([A-Z]+)/);
@@ -283,7 +285,8 @@ function savePelangganCSV() {
 
         // --- Filter Alamat ---
         if (activeAddr) {
-            if (!p.alamat || p.alamat.trim() !== activeAddr) return false;
+            const lookup = buildAddressLookup(getAddressGroups());
+            if (!matchesByGroup(p.alamat && p.alamat.trim(), activeAddr, lookup)) return false;
         }
 
         // --- Filter Blok ---
