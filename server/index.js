@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const compression = require('compression'); // ← tambahan
 const pelangganRoutes = require('./routes/pelanggan');
 const bangunanRoutes  = require('./routes/bangunan');
 
@@ -9,6 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
+app.use(compression()); // ← tambahan, harus paling atas
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
