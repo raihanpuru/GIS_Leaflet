@@ -2,15 +2,17 @@ import { getMap } from '../polygon/polygon.js';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const DEBOUNCE_MS   = 180;   // ms tunggu setelah moveend sebelum render
-const VIEWPORT_PAD  = 0.25;  // 25% padding bounds di semua sisi
-const GRID_CELL_DEG = 0.005; // ~500m per cell pada ekuator — sesuaikan jika perlu
+const DEBOUNCE_MS        = 180;   // ms tunggu setelah moveend sebelum render
+const VIEWPORT_PAD       = 0.25;  // 25% padding bounds di semua sisi
+const GRID_CELL_DEG      = 0.005; // ~500m per cell pada ekuator — sesuaikan jika perlu
+const MOVE_THRESHOLD_PCT = 0.15;  // geser < 15% lebar/tinggi viewport → skip recalculate
 
 // ─── Internal State ──────────────────────────────────────────────────────────
 
-let debounceTimer  = null;
-let isInitialized  = false;
-const subscribers  = new Set(); // callback() yang dipanggil saat viewport berubah
+let debounceTimer      = null;
+let isInitialized      = false;
+const subscribers      = new Set(); // callback() yang dipanggil saat viewport berubah
+let lastNotifiedBounds = null;      // bounds terakhir saat recalculate beneran dilakukan
 
 let spatialGrid    = new Map();
 let indexedItems   = [];       // { item, bbox: {minLat,maxLat,minLng,maxLng} }[]
@@ -22,6 +24,7 @@ function init() {
     const map = getMap();
     if (!map) return;
 
+    map.on('zoomend', () => { lastNotifiedBounds = null; }); // zoom reset threshold
     map.on('moveend zoomend', () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(notifySubscribers, DEBOUNCE_MS);
@@ -31,7 +34,34 @@ function init() {
     console.log('[viewport-manager] Initialized');
 }
 
+function hasMovedEnough(newBounds) {
+    if (!lastNotifiedBounds) return true; // pertama kali, selalu notify
+
+    const prevW = lastNotifiedBounds.getEast()  - lastNotifiedBounds.getWest();
+    const prevH = lastNotifiedBounds.getNorth() - lastNotifiedBounds.getSouth();
+
+    const dLng = Math.abs(newBounds.getCenter().lng - lastNotifiedBounds.getCenter().lng);
+    const dLat = Math.abs(newBounds.getCenter().lat - lastNotifiedBounds.getCenter().lat);
+
+    // Zoom berubah → selalu recalculate
+    const sameSize = Math.abs((newBounds.getEast() - newBounds.getWest()) - prevW) < 0.0001;
+    if (!sameSize) return true;
+
+    // Geser kurang dari threshold → skip
+    return (dLng / prevW) >= MOVE_THRESHOLD_PCT || (dLat / prevH) >= MOVE_THRESHOLD_PCT;
+}
+
 function notifySubscribers() {
+    const map = getMap();
+    if (!map) return;
+
+    const currentBounds = map.getBounds();
+    if (!hasMovedEnough(currentBounds)) {
+        // Geser terlalu kecil, semua marker masih di dalam padded bounds → skip
+        return;
+    }
+
+    lastNotifiedBounds = currentBounds;
     subscribers.forEach(cb => {
         try { cb(); } catch(e) { console.error('[viewport-manager] Subscriber error:', e); }
     });

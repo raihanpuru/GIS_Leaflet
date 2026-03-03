@@ -65,6 +65,85 @@ export function findPelangganInBuilding(buildingFeature, pelangganData) {
     return pelanggans;
 }
 
+/**
+ * Build spatial grid index untuk pelanggan — grid sel ~0.002 derajat (~200m).
+ * Dipakai di getPelangganForBuildingFast() untuk pre-filter sebelum point-in-polygon.
+ * @param {Array} pelangganData
+ * @returns {{ grid: Map, CELL: number }}
+ */
+export function buildPelangganSpatialIndex(pelangganData) {
+    const CELL = 0.002; // ~200m per sel
+    const grid = new Map();
+
+    pelangganData.forEach(p => {
+        const lat = parseFloat(p['Lat']);
+        const lng = parseFloat(p['Long']);
+        if (isNaN(lat) || isNaN(lng)) return;
+
+        const gx = Math.floor(lat / CELL);
+        const gy = Math.floor(lng / CELL);
+        const key = `${gx}:${gy}`;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(p);
+    });
+
+    return { grid, CELL };
+}
+
+/**
+ * Versi cepat: pre-filter pelanggan via grid sebelum point-in-polygon.
+ * Mengurangi operasi dari O(buildings × semua_pelanggan) → O(buildings × pelanggan_terdekat).
+ * @param {Object} buildingFeature - GeoJSON feature
+ * @param {{ grid: Map, CELL: number }} pelangganIndex
+ * @returns {Array}
+ */
+export function getPelangganForBuildingFast(buildingFeature, pelangganIndex) {
+    if (!buildingFeature.properties.building) return [];
+
+    const { grid, CELL } = pelangganIndex;
+    const geom = buildingFeature.geometry;
+    if (!geom) return [];
+
+    // Hitung bbox bangunan
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    const coords = geom.type === 'Polygon'      ? geom.coordinates[0]
+                 : geom.type === 'MultiPolygon' ? geom.coordinates[0][0]
+                 : geom.type === 'Point'        ? [geom.coordinates]
+                 : null;
+    if (!coords) return [];
+
+    coords.forEach(([lng, lat]) => {
+        if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+        if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
+    });
+
+    // Ambil sel grid yang overlap dengan bbox bangunan (+ 1 sel padding)
+    const minGx = Math.floor(minLat / CELL) - 1;
+    const maxGx = Math.floor(maxLat / CELL) + 1;
+    const minGy = Math.floor(minLng / CELL) - 1;
+    const maxGy = Math.floor(maxLng / CELL) + 1;
+
+    const candidates = new Set();
+    for (let gx = minGx; gx <= maxGx; gx++) {
+        for (let gy = minGy; gy <= maxGy; gy++) {
+            const list = grid.get(`${gx}:${gy}`);
+            if (list) list.forEach(p => candidates.add(p));
+        }
+    }
+
+    // Point-in-polygon hanya untuk kandidat terdekat
+    const result = [];
+    candidates.forEach(p => {
+        const lat = parseFloat(p['Lat']);
+        const lng = parseFloat(p['Long']);
+        if (!isNaN(lat) && !isNaN(lng) && isPelangganInBuilding(lat, lng, buildingFeature)) {
+            result.push(p);
+        }
+    });
+
+    return result;
+}
+
 export function mapBuildingsToPelanggan(geojsonData, pelangganData) {
     buildingPelangganMap.clear();
     

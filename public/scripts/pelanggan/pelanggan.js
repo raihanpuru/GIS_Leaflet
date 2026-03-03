@@ -49,6 +49,11 @@ let labelLayer = null;
 let isDraggingEnabled = false;
 let currentKecamatan = null;
 
+// --- Bbox-based incremental loading ---
+let loadedBbox = null;       // bbox yang sudah pernah di-fetch { minLng, minLat, maxLng, maxLat }
+let currentPeriodFilter = {}; // period filter aktif saat ini
+let isFetchingBbox = false;   // lock agar tidak double-fetch
+
 // Map untuk pasangkan marker <-> labelMarker
 const markerLabelMap = new Map(); // key: marker instance, value: labelMarker instance
 
@@ -485,6 +490,11 @@ function createPelangganMarker(row) {
         data[dataIndex]['Long'] = newLatLng.lng.toFixed(7);
 
         marker.setPopupContent(buildPopup(data[dataIndex]));
+
+        // Pindahkan labelMarker ke posisi baru juga
+        const labelMarker = markerLabelMap.get(marker);
+        if (labelMarker) labelMarker.setLatLng(newLatLng);
+
         updateBuildingsWithPelanggan(data);
 
         console.log(`[pelanggan.js] Marker dipindahkan: ${nama} -> [${newLatLng.lat.toFixed(6)}, ${newLatLng.lng.toFixed(6)}]`);
@@ -545,6 +555,134 @@ function createPelangganMarker(row) {
     return { marker, labelMarker };
 }
 
+// Helper: expand loadedBbox untuk mencakup bbox baru
+function expandLoadedBbox(bbox) {
+    if (!loadedBbox) {
+        loadedBbox = { ...bbox };
+        return;
+    }
+    loadedBbox.minLng = Math.min(loadedBbox.minLng, bbox.minLng);
+    loadedBbox.minLat = Math.min(loadedBbox.minLat, bbox.minLat);
+    loadedBbox.maxLng = Math.max(loadedBbox.maxLng, bbox.maxLng);
+    loadedBbox.maxLat = Math.max(loadedBbox.maxLat, bbox.maxLat);
+}
+
+// Helper: cek apakah viewport saat ini sudah tercakup loadedBbox
+function isViewportCovered() {
+    if (!loadedBbox) return false;
+    const map = getMap();
+    if (!map) return false;
+    const b = map.getBounds().pad(0.1); // 10% margin
+    return (
+        b.getSouth() >= loadedBbox.minLat &&
+        b.getNorth() <= loadedBbox.maxLat &&
+        b.getWest()  >= loadedBbox.minLng &&
+        b.getEast()  <= loadedBbox.maxLng
+    );
+}
+
+// Dipanggil saat viewport bergerak keluar area yang sudah di-load
+function onViewportOutOfBounds() {
+    if (isFetchingBbox) return;
+    if (isViewportCovered()) return;
+    fetchBbox(currentPeriodFilter);
+}
+
+// Fetch pelanggan untuk bbox viewport saat ini + padding, merge ke data yang ada
+function fetchBbox(periodFilter = {}) {
+    const map = getMap();
+    if (!map || isFetchingBbox) return;
+
+    const b = map.getBounds().pad(0.3); // 30% padding supaya tidak fetch tiap geser dikit
+    const bbox = {
+        minLng: b.getWest(),
+        minLat: b.getSouth(),
+        maxLng: b.getEast(),
+        maxLat: b.getNorth(),
+    };
+    const bboxStr = `${bbox.minLng},${bbox.minLat},${bbox.maxLng},${bbox.maxLat}`;
+
+    const filterParams = { bbox: bboxStr };
+    if (periodFilter.bulan) filterParams.bulan = periodFilter.bulan;
+    if (periodFilter.tahun) filterParams.tahun = periodFilter.tahun;
+
+    const params = new URLSearchParams(filterParams).toString();
+    const url = `/api/pelanggan${params ? '?' + params : ''}`;
+
+    isFetchingBbox = true;
+    console.log('[pelanggan.js] Fetch bbox:', bboxStr);
+
+    fetch(url)
+        .then(res => {
+            if (!res.ok) return res.json().then(err => { throw new Error(err.error || 'Gagal fetch pelanggan'); });
+            return res.json();
+        })
+        .then(async response => {
+            if (!response.success) throw new Error('API gagal: ' + (response.error || 'Unknown error'));
+
+            const newRows = PelangganAPI.toLegacyFormat(response.data);
+
+            // Merge: tambahkan hanya yang belum ada (cek by _db_id)
+            const existingIds = new Set(getPelangganData().map(r => r._db_id));
+            const toAdd = newRows.filter(r => !existingIds.has(r._db_id));
+
+            if (toAdd.length === 0) {
+                expandLoadedBbox(bbox);
+                console.log('[pelanggan.js] Tidak ada data baru di bbox ini');
+                return;
+            }
+
+            // Tambah ke store
+            const merged = [...getPelangganData(), ...toAdd];
+            _setPelangganData(merged);
+            _setPelangganCount(merged.filter(r => r.Lat && r.Long).length);
+
+            // Buat marker untuk data baru saja
+            let added = 0;
+            await new Promise(resolve => {
+                const CHUNK = 200;
+                let i = 0;
+                function processChunk() {
+                    const end = Math.min(i + CHUNK, toAdd.length);
+                    for (; i < end; i++) {
+                        const row = toAdd[i];
+                        if (!isValidCoord(row)) continue;
+                        const { marker, labelMarker } = createPelangganMarker(row);
+                        allRowData.push({ row, marker, labelMarker });
+                        added++;
+                    }
+                    if (i < toAdd.length) setTimeout(processChunk, 0);
+                    else resolve();
+                }
+                processChunk();
+            });
+
+            // Rebuild spatial index
+            rowSpatialIndex = buildSpatialIndex(allRowData, entry => ({
+                lat: parseFloat(entry.row['Lat']),
+                lng: parseFloat(entry.row['Long'])
+            }));
+            const markerArray = [];
+            markerLabelMap.forEach((_, marker) => markerArray.push(marker));
+            markerSpatialIndex = buildSpatialIndex(markerArray, marker => {
+                const ll = marker.getLatLng();
+                return { lat: ll.lat, lng: ll.lng };
+            });
+
+            expandLoadedBbox(bbox);
+            updateLegend(getPelangganCount(), isDraggingEnabled);
+            updateMarkerVisibility();
+
+            console.log(`[pelanggan.js] +${added} marker baru, total: ${allRowData.length}`);
+        })
+        .catch(err => {
+            console.error('[pelanggan.js] Gagal fetch bbox:', err);
+        })
+        .finally(() => {
+            isFetchingBbox = false;
+        });
+}
+
 export function loadPelanggan(periodFilter = {}) {
     const map = getMap();
 
@@ -553,21 +691,29 @@ export function loadPelanggan(periodFilter = {}) {
         return;
     }
 
+    // Reset state bbox saat ganti periode
+    loadedBbox = null;
+    currentPeriodFilter = periodFilter;
+
     const filterParams = {};
     if (periodFilter.bulan) filterParams.bulan = periodFilter.bulan;
     if (periodFilter.tahun) filterParams.tahun = periodFilter.tahun;
 
-    const params = new URLSearchParams(filterParams).toString();
-    const url = `/api/pelanggan${params ? '?' + params : ''}`;
+    // Tambahkan bbox viewport awal
+    const b = map.getBounds().pad(0.3);
+    filterParams.bbox = `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
 
     console.log('[pelanggan.js] Mengambil data pelanggan dari API dengan filter:', filterParams);
+
+    const params = new URLSearchParams(filterParams).toString();
+    const url = `/api/pelanggan${params ? '?' + params : ''}`;
 
     fetch(url)
         .then(res => {
             if (!res.ok) return res.json().then(err => { throw new Error(err.error || `Gagal fetch pelanggan`); });
             return res.json();
         })
-        .then(response => {
+        .then(async response => {
             if (!response.success) {
                 throw new Error('API gagal: ' + (response.error || 'Unknown error'));
             }
@@ -593,7 +739,9 @@ export function loadPelanggan(periodFilter = {}) {
             pelangganLayer.on('animationend', updateLabelVisibility);
 
             offViewportChange(updateMarkerVisibility);
+            offViewportChange(onViewportOutOfBounds);
             onViewportChange(updateMarkerVisibility);
+            onViewportChange(onViewportOutOfBounds);
 
             labelLayer = L.layerGroup();
             allRowData = [];
@@ -602,19 +750,40 @@ export function loadPelanggan(periodFilter = {}) {
             let count = 0;
             let skipped = 0;
 
-            rows.forEach(row => {
-                if (!isValidCoord(row)) {
-                    skipped++;
-                    console.warn('[pelanggan.js] Koordinat tidak valid, skipped:',
-                        row['idpelanggan'], row['nama'],
-                        '| Lat:', row['Lat'], 'Long:', row['Long']);
-                    return;
+            // --- Chunked processing: proses marker per batch agar main thread tidak freeze ---
+            // Ini mencegah "Page Unresponsive" / "doesn't respond" saat data banyak
+            await new Promise(resolve => {
+                const CHUNK_SIZE = 200; // proses 200 marker per tick
+                let i = 0;
+
+                function processChunk() {
+                    const end = Math.min(i + CHUNK_SIZE, rows.length);
+                    for (; i < end; i++) {
+                        const row = rows[i];
+                        if (!isValidCoord(row)) {
+                            skipped++;
+                            console.warn('[pelanggan.js] Koordinat tidak valid, skipped:',
+                                row['idpelanggan'], row['nama'],
+                                '| Lat:', row['Lat'], 'Long:', row['Long']);
+                            continue;
+                        }
+                        const { marker, labelMarker } = createPelangganMarker(row);
+                        allRowData.push({ row, marker, labelMarker });
+                        count++;
+                    }
+
+                    if (i < rows.length) {
+                        // Yield ke event loop agar browser tidak freeze
+                        setTimeout(processChunk, 0);
+                    } else {
+                        resolve();
+                    }
                 }
 
-                const { marker, labelMarker } = createPelangganMarker(row);
-                allRowData.push({ row, marker, labelMarker });
-                count++;
+                processChunk();
             });
+            // --- End chunked processing ---
+
             _setPelangganCount(count);
 
             // Build spatial index berdasarkan row entries (untuk viewport culling marker)
@@ -631,6 +800,13 @@ export function loadPelanggan(periodFilter = {}) {
                 return { lat: ll.lat, lng: ll.lng };
             });
             console.log(`[pelanggan.js] Spatial index built untuk ${count} marker`);
+
+            // Catat bbox awal yang sudah di-load
+            const initBounds = map.getBounds().pad(0.3);
+            expandLoadedBbox({
+                minLng: initBounds.getWest(),  minLat: initBounds.getSouth(),
+                maxLng: initBounds.getEast(),  maxLat: initBounds.getNorth(),
+            });
 
             if (isPelangganLayerVisible()) {
                 pelangganLayer.addTo(map);
@@ -698,6 +874,10 @@ export function clearPelangganLayer() {
     rowSpatialIndex = null;
     addedMarkers.clear();
     offViewportChange(updateMarkerVisibility);
+    offViewportChange(onViewportOutOfBounds);
+    loadedBbox = null;
+    isFetchingBbox = false;
+    currentPeriodFilter = {};
     _setPelangganData([]);
     _setPelangganCount(0);
     _setIsPelangganVisible(false);

@@ -1,5 +1,5 @@
 import { categories, getCategory, isBuilding } from '../polygon/kategori.js';
-import { getPelangganForBuilding } from '../pelanggan/building-pelanggan-matcher.js';
+import { getPelangganForBuilding, buildPelangganSpatialIndex, getPelangganForBuildingFast } from '../pelanggan/building-pelanggan-matcher.js';
 import { getStyle, createPopupContent, pointToLayer } from '../components/polygon-ui.js';
 
 // Canvas renderer global — jauh lebih ringan dari SVG untuk ribuan polygon
@@ -30,11 +30,14 @@ export function prepareBuildingFeatures(buildings, pelangganData = null) {
     let buildingWithPelangganCount = 0;
     const prepared = [];
 
+    // Build spatial index sekali di luar loop — O(pelanggan) bukan O(buildings × pelanggan)
+    const pelangganIndex = pelangganData ? buildPelangganSpatialIndex(pelangganData) : null;
+
     buildings.forEach(feature => {
         const category = getCategory(feature.properties);
         categories[category].count++;
 
-        const pelangganList = pelangganData ? getPelangganForBuilding(feature, pelangganData) : [];
+        const pelangganList = pelangganIndex ? getPelangganForBuildingFast(feature, pelangganIndex) : [];
         const hasPelanggan = pelangganList.length > 0;
         if (hasPelanggan) buildingWithPelangganCount++;
 
