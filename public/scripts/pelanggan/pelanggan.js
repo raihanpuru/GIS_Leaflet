@@ -486,8 +486,33 @@ function createPelangganMarker(row) {
         }
 
         // Update data di memori dulu
-        data[dataIndex]['Lat'] = newLatLng.lat.toFixed(7);
-        data[dataIndex]['Long'] = newLatLng.lng.toFixed(7);
+        const latStr0 = newLatLng.lat.toFixed(7);
+        const lngStr0 = newLatLng.lng.toFixed(7);
+        data[dataIndex]['Lat'] = latStr0;
+        data[dataIndex]['Long'] = lngStr0;
+
+        // Update juga row closure yang dipakai marker ini
+        // (row adalah referensi ke object lama — harus diupdate agar spatial index konsisten)
+        row['Lat'] = latStr0;
+        row['Long'] = lngStr0;
+
+        // Update entry di allRowData dan rebuild spatial index
+        // agar viewport culling tidak salah posisi setelah marker dipindah
+        const movedEntry = allRowData.find(e => e.marker === marker);
+        if (movedEntry) {
+            movedEntry.row['Lat'] = latStr0;
+            movedEntry.row['Long'] = lngStr0;
+        }
+        rowSpatialIndex = buildSpatialIndex(allRowData, entry => ({
+            lat: parseFloat(entry.row['Lat']),
+            lng: parseFloat(entry.row['Long'])
+        }));
+        const markerArray = [];
+        markerLabelMap.forEach((_, m) => markerArray.push(m));
+        markerSpatialIndex = buildSpatialIndex(markerArray, m => {
+            const ll = m.getLatLng();
+            return { lat: ll.lat, lng: ll.lng };
+        });
 
         marker.setPopupContent(buildPopup(data[dataIndex]));
 
