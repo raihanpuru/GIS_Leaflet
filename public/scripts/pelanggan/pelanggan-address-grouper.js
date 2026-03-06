@@ -6,6 +6,10 @@ function normalize(name) {
     return name
         .toUpperCase()
         .replace(/^(PERUM\.?|PERUMAHAN|KOMPLEK|KOMPLEX|KMP\.?|PERUMNAS)\s+/i, '')
+        // Fix 1: strip prefix jalan/ruko/raya agar "Jl. Ruko Puri Indah" → "PURI INDAH"
+        .replace(/^(JL\.?\s+RUKO|JL\.?\s+RAYA|JL\.?|JALAN|RUKO|RAYA)\s+/i, '')
+        // strip trailing noise: "NO 7C", "KAV. 9", "RT.xx RW.xx"
+        .replace(/\s+(NO\.?\s*\w+|KAV\.?\s*\w+|RT\.\d+\s*RW\.\d+)$/i, '')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -34,9 +38,10 @@ function extractUnitNumber(name) {
 function hasDifferentUnitNumber(a, b) {
     const { num: numA } = extractUnitNumber(a);
     const { num: numB } = extractUnitNumber(b);
+    // Fix 2: hanya blokir kalau keduanya punya nomor unit dan berbeda.
+    // Kalau salah satu tidak bernomor (misal "PURI INDAH" vs "PURI INDAH III"),
+    // biarkan similarityForGrouping yang memutuskan.
     if (numA && numB) return numA !== numB;
-    if (numA && !numB) return true;
-    if (!numA && numB) return true;
     return false;
 }
 
@@ -67,11 +72,20 @@ function similarityForGrouping(a, b) {
     return 1 - dp[m][n] / maxLen;
 }
 
+// Daftar koreksi typo — norm yang match key akan dipenalti sebagai label
+const TYPO_PATTERNS = [/TRATAI/];
+
 function labelScore(norm) {
+    // Penalti tertinggi: label kotor dengan duplikasi (+)
+    if (/[+]/.test(norm)) return [-2, -norm.length];
+    // Penalti: label mengandung typo yang diketahui
+    if (TYPO_PATTERNS.some(p => p.test(norm))) return [-1, -norm.length];
     const { num } = extractUnitNumber(norm);
-    if (num) return [0, norm.length];
-    if (BLOK_CODE_SUFFIX.test(norm)) return [1, norm.length];
-    return [2, norm.length];
+    // label dengan nomor unit (III, IV, V) deprioritaskan — terlalu spesifik
+    if (num) return [0, -norm.length];
+    if (BLOK_CODE_SUFFIX.test(norm)) return [1, -norm.length];
+    // label bersih: prefer yang LEBIH PENDEK (lebih umum/generik)
+    return [2, -norm.length];
 }
 
 const SIMILARITY_THRESHOLD = 0.75;

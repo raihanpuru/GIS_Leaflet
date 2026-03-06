@@ -11,6 +11,11 @@ import {
 const FILTER_BUILDING_COLOR = '#2196F3';
 let filteredBuildingLayers = [];
 
+// Cache bboxIndex supaya tidak di-rebuild tiap kali filter dipanggil
+// Key: geojsonData reference, Value: bboxIndex
+let _cachedBboxIndex = null;
+let _cachedGeojsonData = null;
+
 // State untuk viewport re-render saat pan/zoom
 let _currentRenderState = null; // { type, blok, filteredPelanggan, geojsonData, filterDesc, bboxIndex }
 
@@ -28,6 +33,54 @@ export function clearFilteredBuildingLayers() {
         if (map) map.removeLayer(layer);
     });
     filteredBuildingLayers = [];
+}
+
+// Hitung bbox dari koordinat GeoJSON tanpa L.geoJSON() yang berat
+function _getBboxFromFeature(feature) {
+    try {
+        const geom = feature.geometry;
+        if (!geom) return null;
+
+        let coords;
+        if (geom.type === 'Polygon') {
+            coords = geom.coordinates[0];
+        } else if (geom.type === 'MultiPolygon') {
+            coords = geom.coordinates.flat(2);
+        } else if (geom.type === 'Point') {
+            const [lng, lat] = geom.coordinates;
+            const d = 0.0001;
+            return { minLat: lat - d, maxLat: lat + d, minLng: lng - d, maxLng: lng + d };
+        } else {
+            return null;
+        }
+
+        let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+        for (const [lng, lat] of coords) {
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+            if (lng < minLng) minLng = lng;
+            if (lng > maxLng) maxLng = lng;
+        }
+        return { minLat, maxLat, minLng, maxLng };
+    } catch (e) { return null; }
+}
+
+// Ambil atau build bboxIndex — di-cache per geojsonData reference
+function _getOrBuildBboxIndex(geojsonData) {
+    if (_cachedGeojsonData === geojsonData && _cachedBboxIndex) {
+        return _cachedBboxIndex;
+    }
+
+    const candidateFeatures = geojsonData.features
+        .map((feature, index) => ({ feature, index }))
+        .filter(({ feature }) => feature.properties.building);
+
+    const bboxIndex = buildBboxIndex(candidateFeatures, ({ feature }) => _getBboxFromFeature(feature));
+
+    _cachedGeojsonData = geojsonData;
+    _cachedBboxIndex = bboxIndex;
+    console.log(`[filter-render] bboxIndex built: ${candidateFeatures.length} buildings`);
+    return bboxIndex;
 }
 
 // Viewport change handler — re-render hanya yang masuk viewport
@@ -53,21 +106,7 @@ export function renderBlokHighlight(blok, filteredPelanggan, geojsonData, filter
     const map = getMap();
     if (!map) return 0;
 
-    // Pre-compute bbox index dari semua building features — O(n) sekali
-    // Sehingga viewport query jadi O(k) dimana k = jumlah cell yg overlap
-    const candidateFeatures = geojsonData.features
-        .map((feature, index) => ({ feature, index }))
-        .filter(({ feature }) => feature.properties.building);
-
-    const bboxIndex = buildBboxIndex(candidateFeatures, ({ feature }) => {
-        try {
-            const b = L.geoJSON(feature).getBounds();
-            return {
-                minLat: b.getSouth(), maxLat: b.getNorth(),
-                minLng: b.getWest(),  maxLng: b.getEast()
-            };
-        } catch(e) { return null; }
-    });
+    const bboxIndex = _getOrBuildBboxIndex(geojsonData);
 
     // Simpan state untuk re-render saat viewport berubah
     _currentRenderState = { type: 'blok', blok, filteredPelanggan, geojsonData, filterDesc, bboxIndex };
@@ -88,28 +127,36 @@ function _renderBlokInViewport(blok, filteredPelanggan, geojsonData, filterDesc,
 
     const bounds = getPaddedBounds();
 
+    // Filter pelanggan yang ada di viewport dulu
+    const pelangganInViewport = filteredPelanggan.filter(p => {
+        const lat = parseFloat(p['Lat']);
+        const lng = parseFloat(p['Long']);
+        if (isNaN(lat) || isNaN(lng)) return false;
+        return !bounds || bounds.contains([lat, lng]);
+    });
+
+    if (pelangganInViewport.length === 0) return 0;
+
     // Query grid — hanya kandidat building di viewport
     const candidatesInViewport = queryBboxGrid(bboxIndex, bounds);
 
-    // Tentukan building mana yang mengandung pelanggan dari filteredPelanggan
-    const buildingsToHighlight = new Set();
+    // Build set koordinat pelanggan untuk lookup cepat
+    // Untuk tiap building, cek bbox overlap dulu sebelum point-in-polygon
+    const buildingPelangganMap = new Map(); // index → [pelanggan]
 
-    filteredPelanggan.forEach(pelanggan => {
+    pelangganInViewport.forEach(pelanggan => {
         const lat = parseFloat(pelanggan['Lat']);
         const lng = parseFloat(pelanggan['Long']);
-        if (isNaN(lat) || isNaN(lng)) return;
-
-        // Skip pelanggan di luar viewport (optimasi tambahan)
-        if (bounds && !bounds.contains([lat, lng])) return;
 
         candidatesInViewport.forEach(({ feature, index }) => {
             if (isPelangganInBuilding(lat, lng, feature)) {
-                buildingsToHighlight.add(index);
+                if (!buildingPelangganMap.has(index)) buildingPelangganMap.set(index, []);
+                buildingPelangganMap.get(index).push(pelanggan);
             }
         });
     });
 
-    buildingsToHighlight.forEach(index => {
+    buildingPelangganMap.forEach((pelangganInBuilding, index) => {
         const feature = geojsonData.features[index];
         const layer = L.geoJSON(feature, {
             style: {
@@ -120,11 +167,6 @@ function _renderBlokInViewport(blok, filteredPelanggan, geojsonData, filterDesc,
                 fillOpacity: 0.7
             },
             onEachFeature: function(feature, layer) {
-                const pelangganInBuilding = filteredPelanggan.filter(p => {
-                    const lat = parseFloat(p['Lat']);
-                    const lng = parseFloat(p['Long']);
-                    return isPelangganInBuilding(lat, lng, feature);
-                });
                 layer.bindPopup(buildBlokPopupHTML(blok, pelangganInBuilding, feature, filterDesc));
             }
         });
@@ -132,33 +174,20 @@ function _renderBlokInViewport(blok, filteredPelanggan, geojsonData, filterDesc,
         filteredBuildingLayers.push(layer);
     });
 
-    console.log(`[filter-render] Rendered ${buildingsToHighlight.size} / ${bboxIndex.indexed.length} buildings in viewport`);
-    return buildingsToHighlight.size;
+    console.log(`[filter-render] Rendered ${buildingPelangganMap.size} / ${bboxIndex.indexed.length} buildings in viewport`);
+    return buildingPelangganMap.size;
 }
 
 export function renderNonPelangganHighlight(geojsonData, pelangganData) {
     const map = getMap();
     if (!map) return 0;
 
-    // Build bbox index untuk semua building
-    const candidateFeatures = geojsonData.features
-        .map((feature, index) => ({ feature, index }))
-        .filter(({ feature }) => feature.properties.building);
-
-    const bboxIndex = buildBboxIndex(candidateFeatures, ({ feature }) => {
-        try {
-            const b = L.geoJSON(feature).getBounds();
-            return {
-                minLat: b.getSouth(), maxLat: b.getNorth(),
-                minLng: b.getWest(),  maxLng: b.getEast()
-            };
-        } catch(e) { return null; }
-    });
+    const bboxIndex = _getOrBuildBboxIndex(geojsonData);
 
     // Simpan state untuk re-render saat pan/zoom
     _currentRenderState = {
         type: 'nonPelanggan',
-        filteredPelanggan: pelangganData, // dipakai sebagai "allPelanggan" untuk cek hasPelanggan
+        filteredPelanggan: pelangganData,
         geojsonData,
         bboxIndex
     };

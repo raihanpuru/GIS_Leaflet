@@ -12,6 +12,8 @@ import {
     clearBuildingHighlight as clearHighlight
 } from '../pelanggan/pelanggan-address-filter.js';
 
+import { showLoading, hideLoading } from '../utils/loading.js';
+
 export { refreshFilterCore as refreshFilter };
 
 export function createBlokFilterControl(getGeojsonData) {
@@ -206,39 +208,67 @@ export function createBlokFilterControl(getGeojsonData) {
         addressSelect.onchange = function() {
             const selectedAddress = this.value;
             const geojsonData = getGeojsonData();
-            
+
             updateBlokOptions(blokSelect, selectedAddress || null);
-            
-            if (selectedAddress && geojsonData) {
-                highlightBuildingsByAddress(selectedAddress, geojsonData);
-            } else {
-                clearHighlight();
-            }
+
+            showLoading('Memfilter berdasarkan alamat...');
+            setTimeout(async () => {
+                try {
+                    if (selectedAddress && geojsonData) {
+                        await highlightBuildingsByAddress(selectedAddress, geojsonData);
+                    } else {
+                        await clearHighlight();
+                    }
+                } finally {
+                    hideLoading();
+                }
+            }, 0);
         };
 
         blokSelect.onchange = function() {
             const selectedBlok = this.value;
             const geojsonData = getGeojsonData();
-            
+
             if (checkbox) checkbox.checked = false;
-            
-            if (selectedBlok && geojsonData) {
-                highlightBuildingsByBlok(selectedBlok, geojsonData);
-            } else {
-                clearBuildingHighlight();
-            }
+
+            showLoading('Memfilter berdasarkan blok...');
+            setTimeout(async () => {
+                try {
+                    if (selectedBlok && geojsonData) {
+                        await highlightBuildingsByBlok(selectedBlok, geojsonData);
+                    } else {
+                        await clearBuildingHighlight();
+                    }
+                } finally {
+                    hideLoading();
+                }
+            }, 0);
         };
 
         checkbox.onchange = function() {
             const geojsonData = getGeojsonData();
-            
+
             if (this.checked) {
                 blokSelect.value = '';
-                if (geojsonData) {
-                    highlightNonPelangganBuildings(geojsonData);
-                }
+                showLoading('Memuat bangunan tanpa pelanggan...');
+                setTimeout(async () => {
+                    try {
+                        if (geojsonData) {
+                            await highlightNonPelangganBuildings(geojsonData);
+                        }
+                    } finally {
+                        hideLoading();
+                    }
+                }, 0);
             } else {
-                clearBuildingHighlight();
+                showLoading('Menghapus filter...');
+                setTimeout(async () => {
+                    try {
+                        await clearBuildingHighlight();
+                    } finally {
+                        hideLoading();
+                    }
+                }, 0);
             }
         };
 
@@ -246,9 +276,16 @@ export function createBlokFilterControl(getGeojsonData) {
             addressSelect.value = '';
             blokSelect.value = '';
             checkbox.checked = false;
-            clearBuildingHighlight();
-            clearHighlight();
-            updateBlokOptions(blokSelect, null);
+            showLoading('Menghapus semua filter...');
+            setTimeout(async () => {
+                try {
+                    await clearBuildingHighlight();
+                    await clearHighlight();
+                    updateBlokOptions(blokSelect, null);
+                } finally {
+                    hideLoading();
+                }
+            }, 0);
         };
 
         L.DomEvent.disableClickPropagation(container);

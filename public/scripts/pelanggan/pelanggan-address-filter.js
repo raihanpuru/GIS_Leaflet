@@ -1,4 +1,4 @@
-import { getPelangganData, isPelangganLayerVisible } from './pelanggan-store.js';
+import { getPelangganData, isPelangganLayerVisible, getMarkerRow } from './pelanggan-store.js';
 import { getMap } from '../polygon/polygon.js';
 import {
     clearFilteredBuildingLayers,
@@ -54,7 +54,7 @@ export function getAddressGroups() {
     return _addressGroups;
 }
 
-function filterPelangganMarkersByAddress(groupLabel) {
+async function filterPelangganMarkersByAddress(groupLabel) {
     if (!pelangganLayerRef) {
         console.log('[address-filter] No pelanggan layer reference');
         return;
@@ -72,38 +72,39 @@ function filterPelangganMarkersByAddress(groupLabel) {
         ? allMarkersSnapshot
         : (() => { const arr = []; pelangganLayerRef.eachLayer(l => { if (l instanceof L.Marker) arr.push(l); }); return arr; })();
 
-    markersToIterate.forEach(layer => {
-        let shouldShow = true;
+    const CHUNK = 300;
+    for (let i = 0; i < markersToIterate.length; i += CHUNK) {
+        const chunk = markersToIterate.slice(i, i + CHUNK);
+        chunk.forEach(layer => {
+            let shouldShow = true;
 
-        if (groupLabel) {
-            const latlng = layer.getLatLng();
-            const pelanggan = pelangganData.find(p => {
-                const lat = parseFloat(p['Lat'] || p.latitude);
-                const lng = parseFloat(p['Long'] || p.longitude);
-                return Math.abs(lat - latlng.lat) < 0.000001 &&
-                       Math.abs(lng - latlng.lng) < 0.000001;
-            });
+            if (groupLabel) {
+                // O(1) lookup via marker→row map, tanpa coordinate matching O(n²)
+                const row = getMarkerRow(layer);
+                if (row) {
+                    shouldShow = matchesByGroup(row.alamat && row.alamat.trim(), groupLabel, _addressLookup);
+                } else {
+                    shouldShow = false;
+                }
+            }
 
-            if (pelanggan) {
-                shouldShow = matchesByGroup(pelanggan.alamat && pelanggan.alamat.trim(), groupLabel, _addressLookup);
+            if (shouldShow) {
+                if (!pelangganLayerRef.hasLayer(layer)) {
+                    pelangganLayerRef.addLayer(layer);
+                }
             } else {
-                shouldShow = false;
+                if (pelangganLayerRef.hasLayer(layer)) {
+                    pelangganLayerRef.removeLayer(layer);
+                }
             }
+        });
+        if (i + CHUNK < markersToIterate.length) {
+            await new Promise(r => setTimeout(r, 0));
         }
-
-        if (shouldShow) {
-            if (!pelangganLayerRef.hasLayer(layer)) {
-                pelangganLayerRef.addLayer(layer);
-            }
-        } else {
-            if (pelangganLayerRef.hasLayer(layer)) {
-                pelangganLayerRef.removeLayer(layer);
-            }
-        }
-    });
+    }
 }
 
-export function highlightBuildingsByAddress(address, geojsonData) {
+export async function highlightBuildingsByAddress(address, geojsonData) {
     if (!address) {
         console.log('[address-filter] No address provided');
         clearBuildingHighlight();
@@ -125,7 +126,7 @@ export function highlightBuildingsByAddress(address, geojsonData) {
     console.log(`[address-filter] Found ${filteredPelanggan.length} pelanggan in group "${address}"`);
 
     // Hide/show pelanggan markers
-    filterPelangganMarkersByAddress(address);
+    await filterPelangganMarkersByAddress(address);
 
     // Render bangunan biru berdasarkan pelanggan yang ada di grup alamat ini
     clearFilteredBuildingLayers();
@@ -143,7 +144,7 @@ export function highlightBuildingsByAddress(address, geojsonData) {
     updateInfoPanel(address, filteredPelanggan.length);
 }
 
-export function clearBuildingHighlight() {
+export async function clearBuildingHighlight() {
     console.log('[address-filter] Clearing address filter');
 
     currentFilter = null;
@@ -157,11 +158,17 @@ export function clearBuildingHighlight() {
             ? allMarkersSnapshot
             : (() => { const arr = []; pelangganLayerRef.eachLayer(l => { if (l instanceof L.Marker) arr.push(l); }); return arr; })();
 
-        markersToRestore.forEach(layer => {
-            if (!pelangganLayerRef.hasLayer(layer)) {
-                pelangganLayerRef.addLayer(layer);
+        const CHUNK = 300;
+        for (let i = 0; i < markersToRestore.length; i += CHUNK) {
+            markersToRestore.slice(i, i + CHUNK).forEach(layer => {
+                if (!pelangganLayerRef.hasLayer(layer)) {
+                    pelangganLayerRef.addLayer(layer);
+                }
+            });
+            if (i + CHUNK < markersToRestore.length) {
+                await new Promise(r => setTimeout(r, 0));
             }
-        });
+        }
     }
 
     // Show all pelanggan markers by adding them back to the cluster layer
