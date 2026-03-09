@@ -2,17 +2,30 @@ import {
     filterByUsage, 
     filterByStatus, 
     clearCategoryFilters,
-    getCurrentFilters
+    getCurrentFilters,
+    getFilteredPelangganList
 } from '../pelanggan/pelanggan-category-filter.js';
 import { updateFilterDescription } from './pelanggan-filter-ui.js';
+import { refreshBuildingColors } from '../polygon/polygon.js';
+import { forceRenderFilteredMarkers } from '../pelanggan/pelanggan-marker.js';
+import { showLoading, hideLoading } from '../utils/loading.js';
 
 function onUsageFilterChange() {
     const select = document.getElementById('usageFilterSelect');
     if (select) {
         filterByUsage(select.value);
-        updateFilterStats();
         updateCategoryFilterInBlokFilter();
-        refreshCurrentBlokFilter();
+        refreshBuildingColors(getFilteredPelangganList());
+        showLoading('Memfilter marker...');
+        setTimeout(async () => {
+            try {
+                await forceRenderFilteredMarkers();
+                updateFilterStats();
+            } finally {
+                hideLoading();
+                refreshCurrentBlokFilter();
+            }
+        }, 0);
     }
 }
 
@@ -20,9 +33,18 @@ function onStatusFilterChange() {
     const select = document.getElementById('statusFilterSelect');
     if (select) {
         filterByStatus(select.value);
-        updateFilterStats();
         updateCategoryFilterInBlokFilter();
-        refreshCurrentBlokFilter();
+        refreshBuildingColors(getFilteredPelangganList());
+        showLoading('Memfilter marker...');
+        setTimeout(async () => {
+            try {
+                await forceRenderFilteredMarkers();
+                updateFilterStats();
+            } finally {
+                hideLoading();
+                refreshCurrentBlokFilter();
+            }
+        }, 0);
     }
 }
 
@@ -33,10 +55,19 @@ function onClearFilters() {
     if (usageSelect) usageSelect.value = 'all';
     if (statusSelect) statusSelect.value = 'all';
     
-    const stats = clearCategoryFilters();
-    updateFilterStatsDisplay(stats.visible, stats.hidden);
+    clearCategoryFilters();
     updateCategoryFilterInBlokFilter();
-    refreshCurrentBlokFilter();
+    refreshBuildingColors(getFilteredPelangganList());
+    showLoading('Menghapus filter...');
+    setTimeout(async () => {
+        try {
+            await forceRenderFilteredMarkers();
+            updateFilterStats();
+        } finally {
+            hideLoading();
+            refreshCurrentBlokFilter();
+        }
+    }, 0);
 }
 
 function updateCategoryFilterInBlokFilter() {

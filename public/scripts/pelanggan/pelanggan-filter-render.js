@@ -1,5 +1,5 @@
 import { getMap } from '../polygon/polygon.js';
-import { isPelangganInBuilding } from './building-pelanggan-matcher.js';
+import { isPelangganInBuilding, buildPelangganSpatialIndex, getPelangganForBuildingFast } from './building-pelanggan-matcher.js';
 import {
     onViewportChange,
     offViewportChange,
@@ -15,6 +15,10 @@ let filteredBuildingLayers = [];
 // Key: geojsonData reference, Value: bboxIndex
 let _cachedBboxIndex = null;
 let _cachedGeojsonData = null;
+
+// Cache spatial index pelanggan — rebuild hanya kalau array pelanggan berubah
+let _cachedPelangganIndex = null;
+let _cachedPelangganRef = null;
 
 // State untuk viewport re-render saat pan/zoom
 let _currentRenderState = null; // { type, blok, filteredPelanggan, geojsonData, filterDesc, bboxIndex }
@@ -127,33 +131,28 @@ function _renderBlokInViewport(blok, filteredPelanggan, geojsonData, filterDesc,
 
     const bounds = getPaddedBounds();
 
-    // Filter pelanggan yang ada di viewport dulu
-    const pelangganInViewport = filteredPelanggan.filter(p => {
-        const lat = parseFloat(p['Lat']);
-        const lng = parseFloat(p['Long']);
-        if (isNaN(lat) || isNaN(lng)) return false;
-        return !bounds || bounds.contains([lat, lng]);
-    });
-
-    if (pelangganInViewport.length === 0) return 0;
+    if (filteredPelanggan.length === 0) return 0;
 
     // Query grid — hanya kandidat building di viewport
     const candidatesInViewport = queryBboxGrid(bboxIndex, bounds);
+    if (candidatesInViewport.length === 0) return 0;
 
-    // Build set koordinat pelanggan untuk lookup cepat
-    // Untuk tiap building, cek bbox overlap dulu sebelum point-in-polygon
+    // Build / reuse spatial index pelanggan — O(n) sekali, bukan tiap render
+    // Ganti hanya kalau array pelanggan berubah (referensi berbeda)
+    if (_cachedPelangganRef !== filteredPelanggan) {
+        _cachedPelangganIndex = buildPelangganSpatialIndex(filteredPelanggan);
+        _cachedPelangganRef = filteredPelanggan;
+    }
+
+    // Untuk tiap building di viewport, query pelanggan terdekat via spatial index
+    // O(buildings_in_viewport × pelanggan_di_sel) — jauh lebih cepat dari O(n*m)
     const buildingPelangganMap = new Map(); // index → [pelanggan]
 
-    pelangganInViewport.forEach(pelanggan => {
-        const lat = parseFloat(pelanggan['Lat']);
-        const lng = parseFloat(pelanggan['Long']);
-
-        candidatesInViewport.forEach(({ feature, index }) => {
-            if (isPelangganInBuilding(lat, lng, feature)) {
-                if (!buildingPelangganMap.has(index)) buildingPelangganMap.set(index, []);
-                buildingPelangganMap.get(index).push(pelanggan);
-            }
-        });
+    candidatesInViewport.forEach(({ feature, index }) => {
+        const pelanggansInBuilding = getPelangganForBuildingFast(feature, _cachedPelangganIndex);
+        if (pelanggansInBuilding.length > 0) {
+            buildingPelangganMap.set(index, pelanggansInBuilding);
+        }
     });
 
     buildingPelangganMap.forEach((pelangganInBuilding, index) => {

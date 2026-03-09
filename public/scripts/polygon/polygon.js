@@ -24,6 +24,7 @@ let buildingVisible      = false;
 
 // Viewport rendering state
 let allPreparedBuildings = [];   // semua building sudah di-preprocess (bbox dihitung)
+let allBuildingFeatures  = [];   // raw building features (cache agar tidak re-separate tiap filter)
 let buildingLayerGroup   = null; // di-init saat pertama dipakai, bukan di level module
 let viewportRenderTimer  = null; // debounce timer
 
@@ -90,6 +91,7 @@ export function clearMap() {
         buildingLayerGroup = null;
     }
     allPreparedBuildings = [];
+    allBuildingFeatures  = [];
     buildingVisible = false;
 
     if (currentLegend)       { map.removeControl(currentLegend);       currentLegend = null; }
@@ -121,6 +123,9 @@ export function loadGeoJSON(kecamatan) {
             // Render areas langsung (biasanya sedikit)
             processAreas(areas, currentLayers);
 
+            // Cache raw buildings untuk refreshBuildingColors
+            allBuildingFeatures = buildings;
+
             // Pre-process buildings: hitung bbox & pelanggan, tapi belum render
             const { prepared, buildingWithPelangganCount } = prepareBuildingFeatures(buildings, currentPelangganData);
             allPreparedBuildings = prepared;
@@ -151,6 +156,32 @@ export function loadGeoJSON(kecamatan) {
         });
 }
 
+// ─── Refresh Warna Bangunan Berdasarkan Filter Aktif ─────────────────────────
+/**
+ * Dipanggil setiap filter pelanggan berubah (usage/status/address/blok).
+ * Re-prepare buildings dengan hanya pelanggan yang lolos filter,
+ * lalu re-render viewport supaya warna bangunan sinkron dengan marker.
+ * @param {Array} filteredPelangganData - pelanggan yang lolos semua filter
+ */
+export function refreshBuildingColors(filteredPelangganData) {
+    // Pakai cache allBuildingFeatures — tidak perlu re-separate dari geojson
+    if (allBuildingFeatures.length === 0) return;
+
+    const { prepared, buildingWithPelangganCount } = prepareBuildingFeatures(allBuildingFeatures, filteredPelangganData);
+    allPreparedBuildings = prepared;
+
+    updatePelangganBuildingCount(buildingWithPelangganCount);
+
+    // Re-render viewport jika building layer sedang tampil
+    if (buildingVisible) {
+        if (!buildingLayerGroup) buildingLayerGroup = L.layerGroup();
+        if (!map.hasLayer(buildingLayerGroup)) buildingLayerGroup.addTo(map);
+        renderBuildingsInViewport();
+    }
+
+    console.log(`[refreshBuildingColors] ${buildingWithPelangganCount} bangunan match filter`);
+}
+
 // ─── Update Buildings When Pelanggan Data Berubah ────────────────────────────
 export function updateBuildingsWithPelanggan(pelangganData) {
     currentPelangganData = pelangganData;
@@ -171,6 +202,9 @@ export function updateBuildingsWithPelanggan(pelangganData) {
 
     const { areas, buildings } = separateFeaturesIntoAreasAndBuildings(currentGeojsonData.features);
     processAreas(areas, currentLayers);
+
+    // Cache raw buildings
+    allBuildingFeatures = buildings;
 
     // Re-pre-process buildings dengan data pelanggan baru
     if (buildingLayerGroup) map.removeLayer(buildingLayerGroup);

@@ -2,8 +2,8 @@ import { getCurrentFilter as getBlokFilter } from './pelanggan-filter.js';
 import { getCurrentAddressFilter } from './pelanggan-address-filter.js';
 
 let pelangganLayerRef = null;
-let allMarkers = new Map(); // Map of idpelanggan -> {marker, data}
-let _markerByCoord = new Map(); // Map of "lat,lng" -> marker (untuk lookup cepat)
+let allMarkers = new Map(); 
+let _markerByCoord = new Map(); 
 let currentFilters = {
     usage: 'all',
     status: 'all'
@@ -23,8 +23,6 @@ export function buildMarkersMap(pelangganData, layer) {
         return;
     }
 
-    // Bangun lookup coord -> marker dari semua marker yang SUDAH ada di layer saat ini
-    // (marker lain akan didaftarkan saat masuk viewport via registerMarker)
     layer.eachLayer(m => {
         if (m instanceof L.Marker) {
             const ll = m.getLatLng();
@@ -61,8 +59,6 @@ export function registerMarkerForCategory(marker, pelangganData) {
         if (entryKey === key) {
             entry.marker = marker;
             _markerByCoord.set(key, marker);
-            // Hide/show sudah dihandle oleh updateMarkerVisibility (pre-filter)
-            // shouldShow tetap disimpan untuk referensi applyFilters berikutnya
             break;
         }
     }
@@ -114,8 +110,6 @@ export function applyFilters() {
 
         if (marker) {
             if (shouldShow) {
-                // Jangan addLayer kalau filter alamat/blok sedang aktif
-                // — biarkan filter itu yang decide apakah marker boleh tampil
                 if (!hasOtherFilter && !pelangganLayerRef.hasLayer(marker)) {
                     pelangganLayerRef.addLayer(marker);
                 }
@@ -162,10 +156,33 @@ export function getCurrentFilters() {
 }
 
 export function getFilterStats() {
+    const filtered = getFilteredPelangganList();
     return {
-        visible: Array.from(allMarkers.values()).filter(e => 
-            pelangganLayerRef && pelangganLayerRef.hasLayer(e.marker)
-        ).length,
-        total: allMarkers.size
+        visible: filtered.length,
+        total: _rawPelangganDataRef ? _rawPelangganDataRef.length : allMarkers.size
     };
+}
+
+let _rawPelangganDataRef = null;
+
+export function setRawPelangganData(data) {
+    _rawPelangganDataRef = data;
+}
+
+export function getFilteredPelangganList() {
+    if (!_rawPelangganDataRef) return [];
+
+    return _rawPelangganDataRef.filter(data => {
+        if (currentFilters.usage !== 'all') {
+            const pakai = parseInt(data.pakai) || 0;
+            if (currentFilters.usage === 'low'  && pakai >= 20) return false;
+            if (currentFilters.usage === 'high' && pakai < 20)  return false;
+        }
+        if (currentFilters.status !== 'all') {
+            const lunas = parseInt(data.lunas) || 0;
+            if (currentFilters.status === 'lunas' && lunas !== 1) return false;
+            if (currentFilters.status === 'belum' && lunas === 1) return false;
+        }
+        return true;
+    });
 }

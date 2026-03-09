@@ -168,6 +168,73 @@ export function updateLabelVisibility() {
     });
 }
 
+/**
+ * Force-render semua marker yang lolos filter kategori (usage/status) ke layer,
+ * tanpa batasan viewport — mirip cara kerja filter alamat/blok.
+ * Dipanggil saat filter kategori berubah agar marker langsung muncul semua.
+ */
+export async function forceRenderFilteredMarkers() {
+    const pelangganLayer = getPelangganLayer();
+    if (!pelangganLayer) return;
+
+    const allRowData   = getAllRowData();
+    const addedMarkers = getAddedMarkers();
+    const catFilters   = getCategoryFilters();
+    const activeBlok   = getBlokFilter();
+    const activeAddress = getCurrentAddressFilter();
+    const hasCatFilter = catFilters.usage !== 'all' || catFilters.status !== 'all';
+
+    const toAdd    = [];
+    const toRemove = [];
+
+    allRowData.forEach(entry => {
+        const p = entry.row;
+        let shouldShow = true;
+
+        if (activeAddress) {
+            const lookup = buildAddressLookup(getAddressGroups());
+            if (!matchesByGroup(p.alamat && p.alamat.trim(), activeAddress, lookup)) shouldShow = false;
+        }
+        if (shouldShow && activeBlok && activeBlok !== 'NON_PELANGGAN') {
+            const m = p['noalamat'] && p['noalamat'].match(/^([A-Z]+)/);
+            if (!m || m[1] !== activeBlok) shouldShow = false;
+        }
+        if (shouldShow && hasCatFilter) {
+            const pakai = parseInt(p.pakai) || 0;
+            const lunas = parseInt(p.lunas) || 0;
+            if (catFilters.usage === 'low'    && pakai >= 20) shouldShow = false;
+            if (catFilters.usage === 'high'   && pakai < 20)  shouldShow = false;
+            if (catFilters.status === 'lunas' && lunas !== 1) shouldShow = false;
+            if (catFilters.status === 'belum' && lunas === 1) shouldShow = false;
+        }
+
+        const isAdded = addedMarkers.has(entry);
+        if (shouldShow && !isAdded) toAdd.push(entry);
+        else if (!shouldShow && isAdded) toRemove.push(entry);
+    });
+
+    // Chunked agar main thread tidak freeze
+    const CHUNK = 300;
+
+    for (let i = 0; i < toRemove.length; i += CHUNK) {
+        const chunk = toRemove.slice(i, i + CHUNK);
+        pelangganLayer.removeLayers(chunk.map(e => e.marker));
+        chunk.forEach(e => addedMarkers.delete(e));
+        if (i + CHUNK < toRemove.length) await new Promise(r => setTimeout(r, 0));
+    }
+
+    for (let i = 0; i < toAdd.length; i += CHUNK) {
+        const chunk = toAdd.slice(i, i + CHUNK);
+        pelangganLayer.addLayers(chunk.map(e => e.marker));
+        chunk.forEach(e => addedMarkers.add(e));
+        addToMarkersSnapshot(chunk.map(e => e.marker), chunk);
+        if (i + CHUNK < toAdd.length) await new Promise(r => setTimeout(r, 0));
+    }
+
+    console.log(`[pelanggan-marker.js] forceRender: +${toAdd.length} / -${toRemove.length}`);
+    updateLabelVisibility();
+}
+
 // ── Marker Factory ────────────────────────────────────────────────────────────
 
 export function createPelangganMarker(row) {

@@ -6,6 +6,15 @@ import {
 } from './pelanggan-filter-render.js';
 import { groupAddresses, buildAddressLookup, matchesByGroup } from './pelanggan-address-grouper.js';
 
+// Disimpan dari luar lewat setCategoryFiltersRef() untuk hindari circular import
+let _categoryFiltersRef = null;
+export function setCategoryFiltersRef(getterFn) {
+    _categoryFiltersRef = getterFn;
+}
+function _getCatFilters() {
+    return _categoryFiltersRef ? _categoryFiltersRef() : { usage: 'all', status: 'all' };
+}
+
 // Cache grup dan lookup — di-rebuild tiap kali data berubah
 let _addressGroups = [];
 let _addressLookup = new Map();
@@ -118,9 +127,21 @@ export async function highlightBuildingsByAddress(address, geojsonData) {
     if (_addressLookup.size === 0) rebuildGroups();
 
     // Filter pelanggan berdasarkan grup alamat yang dipilih
-    const filteredPelanggan = pelangganData.filter(p =>
-        matchesByGroup(p.alamat && p.alamat.trim(), address, _addressLookup)
-    );
+    const catFilters = _getCatFilters();
+    const filteredPelanggan = pelangganData.filter(p => {
+        if (!matchesByGroup(p.alamat && p.alamat.trim(), address, _addressLookup)) return false;
+        if (catFilters.usage !== 'all') {
+            const pakai = parseInt(p.pakai) || 0;
+            if (catFilters.usage === 'low'  && pakai >= 20) return false;
+            if (catFilters.usage === 'high' && pakai < 20)  return false;
+        }
+        if (catFilters.status !== 'all') {
+            const lunas = parseInt(p.lunas) || 0;
+            if (catFilters.status === 'lunas' && lunas !== 1) return false;
+            if (catFilters.status === 'belum' && lunas === 1) return false;
+        }
+        return true;
+    });
 
     console.log(`[address-filter] Filtering by group: ${address}`);
     console.log(`[address-filter] Found ${filteredPelanggan.length} pelanggan in group "${address}"`);

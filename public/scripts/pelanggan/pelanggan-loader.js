@@ -18,10 +18,13 @@ import {
 }                                          from '../pelanggan/pelanggan-filter.js';
 import {
     setPelangganCategoryLayerRef,
-    buildMarkersMap
+    buildMarkersMap,
+    setRawPelangganData,
+    getCurrentFilters
 }                                          from '../pelanggan/pelanggan-category-filter.js';
 import {
-    setPelangganLayerRef as setPelangganAddressLayerRef
+    setPelangganLayerRef as setPelangganAddressLayerRef,
+    setCategoryFiltersRef
 }                                          from '../pelanggan/pelanggan-address-filter.js';
 import {
     getPelangganData, isPelangganLayerVisible, getPelangganCount,
@@ -135,6 +138,7 @@ export function fetchBbox(periodFilter = {}) {
             const merged = [...getPelangganData(), ...toAdd];
             _setPelangganData(merged);
             _setPelangganCount(merged.filter(r => r.Lat && r.Long).length);
+            setRawPelangganData(merged);
 
             // Buat marker untuk data baru saja (chunked)
             let added = 0;
@@ -288,6 +292,7 @@ export function loadPelanggan(periodFilter = {}) {
 
             setPelangganLayerRef(getPelangganLayer());
             setPelangganAddressLayerRef(getPelangganLayer());
+            setCategoryFiltersRef(getCurrentFilters);
 
             if (!document.querySelector('.pelanggan-category-filter-control')) {
                 const categoryFilterControl = createCategoryFilterControl();
@@ -296,6 +301,7 @@ export function loadPelanggan(periodFilter = {}) {
 
             setPelangganCategoryLayerRef(getPelangganLayer());
             buildMarkersMap(getPelangganData(), getPelangganLayer());
+            setRawPelangganData(getPelangganData());
 
             updateBuildingsWithPelanggan(getPelangganData());
             updateBlokOptions();
