@@ -1,45 +1,51 @@
 # 🗺️ Leaflet Pelanggan GIS — MySQL Edition
 
-Aplikasi web GIS berbasis **Leaflet.js** untuk visualisasi dan manajemen data pelanggan dengan backend **Node.js (Express)** dan database **MySQL/MariaDB**. Proyek ini merupakan konversi dari versi PostgreSQL + PostGIS ke MySQL.
+Aplikasi web GIS berbasis **Leaflet.js** untuk visualisasi dan manajemen data pelanggan secara geografis, dengan backend **Node.js (Express)** dan database **MySQL / MariaDB**. Proyek ini merupakan konversi dari versi PostgreSQL + PostGIS ke MySQL.
+
+> Repositori: [raihanpuru/GIS_Leaflet](https://github.com/raihanpuru/GIS_Leaflet)
 
 ---
 
 ## 📋 Daftar Isi
 
-- [Fitur](#fitur)
-- [Teknologi](#teknologi)
-- [Struktur Proyek](#struktur-proyek)
-- [Prasyarat](#prasyarat)
-- [Instalasi](#instalasi)
-- [Konfigurasi](#konfigurasi)
-- [Setup Database](#setup-database)
-- [Menjalankan Aplikasi](#menjalankan-aplikasi)
-- [API Endpoints](#api-endpoints)
-- [Import Data CSV](#import-data-csv)
-- [Troubleshooting](#troubleshooting)
+- [Fitur](#-fitur)
+- [Tech Stack](#-tech-stack)
+- [Struktur Proyek](#-struktur-proyek)
+- [Prasyarat](#-prasyarat)
+- [Instalasi](#-instalasi)
+- [Setup Database](#-setup-database)
+- [Import Data](#-import-data)
+- [Menjalankan Aplikasi](#-menjalankan-aplikasi)
+- [API Endpoints](#-api-endpoints)
+- [Cara Penggunaan](#-cara-penggunaan)
+- [Changelog](#-changelog)
+- [Troubleshooting](#-troubleshooting)
 
 ---
 
 ## ✨ Fitur
 
-- Visualisasi peta interaktif menggunakan **Leaflet.js**
-- Manajemen data pelanggan PDAM/utilitas (tagihan, status lunas, koordinat GPS)
-- Data bangunan/gedung dari **OpenStreetMap (OSM)** per kecamatan
-- Query spasial berbasis koordinat longitude & latitude
-- Pencarian pelanggan dan filter berdasarkan periode tagihan (bulan/tahun)
-- REST API untuk integrasi frontend
+- 🗺️ **Peta interaktif** berbasis Leaflet.js dengan basemap OpenStreetMap
+- 📍 **Visualisasi marker pelanggan** dengan clustering otomatis
+- 🏘️ **Layer polygon & bangunan** dari data OpenStreetMap (OSM) per kecamatan
+- 🔍 **Filter multi-dimensi**: periode (bulan/tahun), alamat, blok, kategori (usage & status lunas)
+- 📥 **Export CSV** sesuai filter yang sedang aktif
+- ✏️ **Edit koordinat** via drag & drop marker — tersimpan otomatis ke database
+- 🏗️ **Viewport rendering** untuk performa optimal (building hanya dirender di area yang terlihat)
+- 🗜️ **Gzip compression** untuk mempercepat load halaman
+- 🩺 **Health check endpoint** (`/api/health`) dan script `test-connection.js`
 
 ---
 
-## 🛠️ Teknologi
+## 🛠️ Tech Stack
 
-| Komponen   | Teknologi                        |
-|------------|----------------------------------|
-| Frontend   | Leaflet.js, HTML, CSS, JavaScript |
-| Backend    | Node.js, Express.js              |
-| Database   | MySQL / MariaDB                  |
-| ORM/Driver | mysql2                           |
-| Dev Tools  | nodemon, dotenv                  |
+| Layer | Teknologi |
+|---|---|
+| Frontend | HTML, CSS, JavaScript (ES Modules), Leaflet.js |
+| Backend | Node.js, Express.js |
+| Database | MySQL 8.0+ / MariaDB 10.5+ |
+| Dependencies | `express`, `mysql2`, `compression`, `cors`, `dotenv`, `csv-parser` |
+| Dev | `nodemon` |
 
 ---
 
@@ -47,20 +53,72 @@ Aplikasi web GIS berbasis **Leaflet.js** untuk visualisasi dan manajemen data pe
 
 ```
 00_Tes Leaflet_mysql/
+│
 ├── database/
-│   ├── mysql_schema.sql       # Schema utama (pelanggan, buildings, view)
-│   └── bangunan_schema.sql    # Schema tabel bangunan OSM
+│   ├── mysql_schema.sql            # Schema utama: tabel pelanggan, buildings, trigger, view
+│   └── bangunan_schema.sql         # Schema tabel bangunan (footprint OSM)
+│
 ├── server/
-│   ├── index.js               # Entry point server Express
-│   └── scripts/
-│       └── import-csv.js      # Script import data CSV
+│   ├── index.js                    # Entry point Express server
+│   ├── config/
+│   │   └── database.js             # Konfigurasi koneksi MySQL pool
+│   ├── models/
+│   │   └── Pelanggan.js            # Model query database pelanggan
+│   ├── routes/
+│   │   ├── pelanggan.js            # Route API /api/pelanggan
+│   │   └── bangunan.js             # Route API /api/bangunan
+│   ├── scripts/
+│   │   ├── import-csv.js           # Script import data pelanggan dari CSV
+│   │   └── import-geojson.js       # Script import data bangunan dari GeoJSON (OSM)
+│   └── test-connection.js          # Script verifikasi koneksi & tabel DB
+│
 ├── public/
-│   └── data/
-│       └── pelanggan/         # File CSV data pelanggan
-├── .env                       # Konfigurasi environment (tidak di-commit)
-├── .env.example               # Template konfigurasi
+│   ├── index.html                  # Halaman utama aplikasi
+│   ├── data/
+│   │   └── kecamatan/              # (Opsional) file GeoJSON statis per kecamatan
+│   ├── scripts/
+│   │   ├── api/
+│   │   │   └── pelanggan-api.js          # API client (fetch ke backend)
+│   │   ├── app/
+│   │   │   └── app.js                    # Inisialisasi aplikasi
+│   │   ├── components/
+│   │   │   ├── pelanggan-ui.js           # Marker, popup, legend pelanggan
+│   │   │   ├── pelanggan-filter-ui.js    # Panel filter alamat & blok
+│   │   │   ├── pelanggan-category-filter-ui.js
+│   │   │   ├── pelanggan-period-filter-ui.js
+│   │   │   └── polygon-ui.js             # Layer control & legend polygon
+│   │   ├── pelanggan/
+│   │   │   ├── pelanggan.js
+│   │   │   ├── pelanggan-loader.js
+│   │   │   ├── pelanggan-marker.js
+│   │   │   ├── pelanggan-filter.js
+│   │   │   ├── pelanggan-filter-render.js
+│   │   │   ├── pelanggan-address-filter.js
+│   │   │   ├── pelanggan-address-grouper.js
+│   │   │   ├── pelanggan-category-filter.js
+│   │   │   ├── pelanggan-csv.js
+│   │   │   ├── pelanggan-layer-state.js
+│   │   │   ├── pelanggan-store.js
+│   │   │   └── building-pelanggan-matcher.js
+│   │   ├── polygon/
+│   │   │   ├── polygon.js
+│   │   │   ├── polygon-processor.js
+│   │   │   ├── kategori.js
+│   │   │   └── kecamatan.js
+│   │   └── utils/
+│   │       ├── loading.js
+│   │       └── viewport-manager.js
+│   └── styles/
+│       └── main.css
+│
+├── src/
+│   └── server.js                   # Entry point alternatif (legacy)
+│
+├── Overpass-turbo (script bangunan).txt  # Query Overpass API untuk ambil data OSM
+├── .env                            # Konfigurasi environment lokal (tidak di-commit)
+├── .env.example                    # Template konfigurasi
 ├── package.json
-└── INSTALLATION.md
+└── README.md
 ```
 
 ---
@@ -78,14 +136,27 @@ Aplikasi web GIS berbasis **Leaflet.js** untuk visualisasi dan manajemen data pe
 ### 1. Clone / Ekstrak Proyek
 
 ```bash
-cd /path/to/project
+git clone https://github.com/raihanpuru/GIS_Leaflet.git
+cd GIS_Leaflet
 ```
 
-### 2. Install Dependensi
+### 2. Install Dependensi Node.js
 
 ```bash
 npm install
 ```
+
+Ini akan menginstall semua package berikut secara otomatis:
+
+| Package | Keterangan |
+|---|---|
+| `express` | Web framework / HTTP server |
+| `mysql2` | Driver koneksi MySQL |
+| `compression` | Gzip compression middleware |
+| `cors` | Cross-Origin Resource Sharing |
+| `dotenv` | Baca variabel dari file `.env` |
+| `csv-parser` | Parse file CSV untuk import data |
+| `nodemon` *(devDependency)* | Auto-restart server saat development |
 
 ### 3. Buat File Environment
 
@@ -93,11 +164,7 @@ npm install
 cp .env.example .env
 ```
 
----
-
-## ⚙️ Konfigurasi
-
-Edit file `.env` sesuai konfigurasi lokal Anda:
+Edit file `.env` sesuai konfigurasi lokal:
 
 ```env
 # Server
@@ -114,21 +181,13 @@ DB_PASSWORD=your_mysql_password
 NODE_ENV=development
 ```
 
-> **Catatan:** File `.env` sudah di-*gitignore*, jangan di-commit ke repositori.
+> ⚠️ File `.env` sudah ada di `.gitignore`, jangan di-commit ke repositori.
 
 ---
 
 ## 🗄️ Setup Database
 
 ### 1. Buat Database
-
-Login ke MySQL dan buat database:
-
-```sql
-CREATE DATABASE leaflet_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-Atau via command line:
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE leaflet_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
@@ -140,40 +199,72 @@ mysql -u root -p -e "CREATE DATABASE leaflet_db CHARACTER SET utf8mb4 COLLATE ut
 mysql -u root -p leaflet_db < database/mysql_schema.sql
 ```
 
-Schema ini akan membuat:
-- Tabel **`pelanggan`** — data pelanggan beserta koordinat dan info tagihan
-- Tabel **`buildings`** — data footprint bangunan dengan geometri poligon
+Schema ini membuat:
+- Tabel **`pelanggan`** — data pelanggan beserta koordinat GPS dan info tagihan
+- Tabel **`buildings`** — footprint bangunan dengan geometri poligon
 - **Trigger** otomatis untuk mengisi kolom `POINT` dari `longitude` & `latitude`
-- **View** `pelanggan_with_buildings` — gabungan data pelanggan dan bangunan
+- **View** `pelanggan_with_buildings` — join data pelanggan dan bangunan
 
-### 3. (Opsional) Import Data Bangunan OSM
+### 3. Jalankan Schema Bangunan OSM
 
 ```bash
 mysql -u root -p leaflet_db < database/bangunan_schema.sql
 ```
 
-### 4. Verifikasi
+Membuat tabel **`bangunan`** untuk menyimpan footprint bangunan dari OpenStreetMap.
+
+### 4. Verifikasi Koneksi & Tabel
 
 ```bash
-mysql -u root -p leaflet_db -e "SHOW TABLES;"
+npm run test:db
 ```
 
 Output yang diharapkan:
 ```
-+--------------------+
-| Tables_in_leaflet_db |
-+--------------------+
-| buildings            |
-| pelanggan            |
-| bangunan             |
-+--------------------+
+✓ Connected successfully
+✓ Spatial functions OK
+✓ Pelanggan table exists
+✅ All tests passed!
+```
+
+---
+
+## 📥 Import Data
+
+### Import Data Pelanggan (CSV)
+
+Letakkan file CSV di folder `public/data/pelanggan/`, lalu jalankan:
+
+```bash
+npm run import
+# atau dengan path kustom
+node server/scripts/import-csv.js /path/to/file.csv
+```
+
+Format kolom CSV yang diharapkan:
+```
+nosambungan, idpelanggan, nopelanggan, nama, alamat, noalamat, nourut, Long, Lat
+```
+
+### Import Data Bangunan (GeoJSON dari OSM)
+
+Data bangunan diambil dari OpenStreetMap menggunakan **Overpass API**. Query-nya sudah tersedia di file `Overpass-turbo (script bangunan).txt`.
+
+Langkah:
+1. Buka [overpass-turbo.eu](https://overpass-turbo.eu/)
+2. Paste query dari file `.txt` tersebut, sesuaikan nama kecamatan
+3. Jalankan dan export hasilnya sebagai **GeoJSON**
+4. Import ke database:
+
+```bash
+node server/scripts/import-geojson.js
 ```
 
 ---
 
 ## ▶️ Menjalankan Aplikasi
 
-### Mode Development (auto-reload)
+### Mode Development (auto-reload dengan nodemon)
 
 ```bash
 npm run dev
@@ -185,82 +276,132 @@ npm run dev
 npm start
 ```
 
-Akses aplikasi di browser: **http://localhost:3000**
+Buka browser: **http://localhost:3000**
 
 ---
 
 ## 📡 API Endpoints
 
-| Method | Endpoint                          | Deskripsi                              |
-|--------|-----------------------------------|----------------------------------------|
-| GET    | `/api/pelanggan`                  | Ambil semua data pelanggan             |
-| GET    | `/api/pelanggan/stats`            | Statistik data pelanggan               |
-| GET    | `/api/pelanggan/search?q=<kata>`  | Cari pelanggan berdasarkan nama/alamat |
-| GET    | `/api/pelanggan/nearby`           | Cari pelanggan terdekat (koordinat)    |
+### Pelanggan
 
-Contoh request `nearby`:
-```bash
-curl "http://localhost:3000/api/pelanggan/nearby?lng=112.686&lat=-7.449&radius=500"
-```
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| `GET` | `/api/pelanggan` | Ambil semua pelanggan (support filter) |
+| `GET` | `/api/pelanggan/search?q=<kata>` | Cari pelanggan berdasarkan nama/alamat |
+| `GET` | `/api/pelanggan/nearby?lng=&lat=&radius=` | Pelanggan dalam radius tertentu (meter, default 500) |
+| `GET` | `/api/pelanggan/stats` | Statistik data pelanggan |
+| `GET` | `/api/pelanggan/:id` | Detail pelanggan by ID |
+| `POST` | `/api/pelanggan` | Tambah pelanggan baru |
+| `PUT` | `/api/pelanggan/:id` | Update pelanggan by ID |
+| `PATCH` | `/api/pelanggan/by-nosambungan/:nosambungan` | Update koordinat semua periode by nosambungan |
+| `DELETE` | `/api/pelanggan/:id` | Hapus pelanggan |
+
+**Query params** untuk `GET /api/pelanggan`:
+
+| Param | Keterangan |
+|---|---|
+| `nama` | Filter by nama |
+| `alamat` | Filter by alamat |
+| `noalamat` | Filter by nomor alamat |
+| `bulan` | Filter by bulan (1–12) |
+| `tahun` | Filter by tahun |
+| `limit` | Jumlah maksimal data |
+| `offset` | Offset untuk pagination |
+| `bbox` | Bounding box: `minLng,minLat,maxLng,maxLat` |
+
+### Bangunan
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| `GET` | `/api/bangunan/:kecamatan` | Data bangunan per kecamatan (GeoJSON FeatureCollection) |
+| `GET` | `/api/bangunan/:kecamatan/stats` | Statistik jumlah bangunan per tipe |
+
+**Query params** untuk `GET /api/bangunan/:kecamatan`:
+
+| Param | Keterangan |
+|---|---|
+| `building` | Filter tipe bangunan (misal: `house`, `commercial`) |
+| `amenity` | Filter amenity (misal: `school`, `clinic`) |
+| `name` | Filter by nama bangunan (LIKE) |
+| `bbox` | Bounding box: `minLng,minLat,maxLng,maxLat` |
+
+### Lainnya
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| `GET` | `/api/health` | Health check server |
 
 ---
 
-## 📥 Import Data CSV
+## 🗺️ Cara Penggunaan
 
-Untuk mengimpor data pelanggan dari file CSV:
+**Melihat Data Pelanggan** — marker otomatis muncul saat halaman dibuka. Klik marker untuk melihat detail di popup.
 
-```bash
-# Import file default (GHIJ)
-npm run import:ghij
+**Filter Data** — gunakan panel filter untuk menyaring berdasarkan periode, alamat, blok, atau kategori.
 
-# Import file CSV kustom
-node server/scripts/import-csv.js /path/to/file.csv
-```
+**Export CSV** — klik tombol Download CSV untuk mengunduh data sesuai filter yang aktif.
 
-Format kolom CSV yang diharapkan:
-```
-nosambungan, idpelanggan, nopelanggan, nama, alamat, noalamat, nourut, Long, Lat
-```
+**Edit Koordinat** — aktifkan mode Drag, geser marker ke posisi yang benar, koordinat tersimpan otomatis ke database.
+
+**Layer Bangunan** — klik tombol Show Building untuk menampilkan/menyembunyikan footprint bangunan. Bangunan hanya dirender di viewport aktif untuk performa optimal.
+
+---
+
+## 🔄 Changelog
+
+| Versi | Keterangan |
+|---|---|
+| **v2.4** | Improvement + bugfix, fix count pelanggan |
+| **v2.3** | Improvement + bugfix |
+| **v2.2** | Improvement + bugfix |
+| **v2.11** | Bug fix |
+| **v2.1** | Optimasi load page + bugfix enable edit |
+| **v2.01** | Optimasi first load web |
+| **v2.0** | Optimasi first load halaman + gzip compression |
+| **v1.9** | Fitur alamat group |
+| **v1.8** | Bug fix |
+| **v1.7** | UI & UX improvement |
+| **v1.6** | Load data pelanggan by bulan + tahun |
+| **v1.4** | Clustering marker pelanggan |
+| **v1.3** | Download CSV sesuai filter aktif |
+| **v1.x** | Refactor: gabung filter alamat & blok jadi 1 panel |
+| **v1.0** | Initial commit |
 
 ---
 
 ## 🔧 Troubleshooting
 
 **Tidak bisa konek ke MySQL**
-- Pastikan service MySQL berjalan: `sudo service mysql status`
-- Periksa kredensial di `.env` (host, port, user, password)
-- Coba ganti `DB_HOST=localhost` menjadi `DB_HOST=127.0.0.1`
+```bash
+sudo service mysql status   # cek status
+sudo service mysql start    # start jika belum jalan
+```
+Coba ganti `DB_HOST=localhost` menjadi `DB_HOST=127.0.0.1` di `.env`.
 
-**Error saat menjalankan schema**
-- Pastikan versi MySQL/MariaDB mendukung `SPATIAL INDEX` dan tipe `POINT`, `POLYGON`, `GEOMETRY`
-- MariaDB 10.5+ atau MySQL 8.0+ direkomendasikan
+**Error saat menjalankan schema SQL**
+Pastikan versi MySQL/MariaDB mendukung `SPATIAL INDEX` dan tipe `POINT`, `POLYGON`, `GEOMETRY`. Gunakan MySQL 8.0+ atau MariaDB 10.5+.
 
 **Port 3000 sudah digunakan**
-- Ganti port di `.env`: `PORT=3001`
-- Atau matikan proses yang menggunakan port tersebut:
-  ```bash
-  lsof -ti:3000 | xargs kill -9
-  ```
+```bash
+lsof -ti:3000 | xargs kill -9
+```
+Atau ganti `PORT` di file `.env`.
 
-**npm install gagal**
-- Bersihkan cache: `npm cache clean --force`
-- Hapus `node_modules` dan install ulang:
-  ```bash
-  rm -rf node_modules package-lock.json && npm install
-  ```
+**`npm install` gagal**
+```bash
+npm cache clean --force
+rm -rf node_modules package-lock.json
+npm install
+```
+
+**Data bangunan tidak muncul**
+Pastikan sudah menjalankan `database/bangunan_schema.sql` dan mengimport data GeoJSON OSM via `import-geojson.js`.
 
 ---
 
 ## 🔒 Catatan Keamanan (Produksi)
 
 - Ganti password default database
-- Jangan expose `.env` ke publik atau repositori
-- Aktifkan SSL untuk koneksi database
-- Tambahkan autentikasi pada API endpoint
-- Buat backup database secara berkala
-
----
-
-## 📄 Lisensi
-
-ISC License
+- Jangan expose file `.env` ke publik atau commit ke repositori
+- Tambahkan autentikasi pada API endpoint jika diperlukan
+- Aktifkan SSL untuk koneksi database di lingkungan produksi
