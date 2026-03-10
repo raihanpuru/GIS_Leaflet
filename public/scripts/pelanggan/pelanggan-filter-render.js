@@ -7,6 +7,7 @@ import {
     buildBboxIndex,
     queryBboxGrid
 } from '../utils/viewport-manager.js';
+import { updateActiveFilterStatus } from '../components/pelanggan-ui.js';
 
 const FILTER_BUILDING_COLOR = '#2196F3';
 let filteredBuildingLayers = [];
@@ -307,52 +308,15 @@ function buildNonPelangganPopupHTML(feature, layer) {
 }
 
 export function updateFilterStatus(blok, buildingCount, pelangganCount, filterDesc = '') {
+    // Juga update filter-status lama (untuk backward compat jika masih dipakai)
     let statusDiv = document.getElementById('filter-status');
-
-    if (!statusDiv && blok) {
-        const legendEl = document.getElementById('pelanggan-puri-legend');
-        if (legendEl) {
-            statusDiv = document.createElement('div');
-            statusDiv.id = 'filter-status';
-            statusDiv.style.cssText = `
-                margin-left: 8px;
-                padding-left: 10px;
-                border-left: 2px solid #e0e0e0;
-                font-size: 14px;
-            `;
-            legendEl.appendChild(statusDiv);
-        }
-    }
-
-    if (!statusDiv) return;
+    if (statusDiv) statusDiv.style.display = 'none';
 
     if (blok === 'NON_PELANGGAN') {
-        statusDiv.innerHTML = `
-            <div style="font-weight: 600; color: #616161; white-space: nowrap;">
-                Filter: Tanpa Pelanggan
-            </div>
-            <div style="color: #666; font-size: 11px; white-space: nowrap;">
-                ${buildingCount} bangunan kosong
-            </div>
-        `;
-        statusDiv.style.display = 'block';
+        updateActiveFilterStatus({ mode: 'nonpelanggan', buildingCount });
     } else if (blok) {
-        let html = `
-            <div style="font-weight: 600; color: #1565C0; white-space: nowrap;">
-                Filter Aktif: Blok ${blok}
-            </div>
-            <div style="color: #31572c; font-size: 12px; font-weight: bold; white-space: nowrap;">
-                ${buildingCount} bangunan - ${pelangganCount} pelanggan
-            </div>
-        `;
-        if (filterDesc) {
-            html += `<div style="color: #4CAF50; font-size: 10px; margin-top: 2px; font-weight: 500; white-space: nowrap;">
-                + Filter: ${filterDesc}
-            </div>`;
-        }
-        statusDiv.innerHTML = html;
-        statusDiv.style.display = 'block';
+        updateActiveFilterStatus({ mode: 'blok', blok, pelangganCount, buildingCount, filterDesc });
     } else {
-        statusDiv.style.display = 'none';
+        updateActiveFilterStatus({ mode: null });
     }
 }

@@ -1,4 +1,4 @@
-import { getMap } from '../polygon/polygon.js';
+import { getMap, refreshBuildingColors } from '../polygon/polygon.js';
 import { getPelangganData, getMarkerRow, getMarkerRowMap, _setMarkerRow, _clearMarkerRowMap } from '../pelanggan/pelanggan-store.js';
 import { getCurrentFilters as getCategoryFilters } from './pelanggan-category-filter.js';
 import { getCurrentAddressFilter, getAddressGroups } from './pelanggan-address-filter.js';
@@ -118,8 +118,9 @@ function filterPelangganByBlok(blok) {
         const pelangganBlok = extractBlok(pelanggan['noalamat']);
         if (pelangganBlok !== blok) return false;
 
-        if (activeAddress && pelanggan.alamat && pelanggan.alamat.trim() !== activeAddress) {
-            return false;
+        if (activeAddress) {
+            const lookup = buildAddressLookup(getAddressGroups());
+            if (!matchesByGroup(pelanggan.alamat && pelanggan.alamat.trim(), activeAddress, lookup)) return false;
         }
 
         if (categoryFilters.usage !== 'all') {
@@ -182,6 +183,9 @@ export async function clearBuildingHighlight() {
     currentFilter = null;
 
     await _restoreMarkersWithFilter(null);
+
+    // Kembalikan warna bangunan (biru = ada pelanggan) setelah filter blok di-reset
+    refreshBuildingColors(getPelangganData());
 
     updateFilterStatus(null, 0, 0);
 }

@@ -5,6 +5,7 @@ import {
     renderBlokHighlight
 } from './pelanggan-filter-render.js';
 import { groupAddresses, buildAddressLookup, matchesByGroup } from './pelanggan-address-grouper.js';
+import { updateActiveFilterStatus } from '../components/pelanggan-ui.js';
 
 // Disimpan dari luar lewat setCategoryFiltersRef() untuk hindari circular import
 let _categoryFiltersRef = null;
@@ -205,42 +206,15 @@ export async function clearBuildingHighlight() {
     if (infoPanel) {
         infoPanel.style.display = 'none';
     }
+    updateActiveFilterStatus({ mode: null });
 }
 
 function updateInfoPanel(address, pelangganCount) {
-    let infoPanel = document.getElementById('addressFilterInfo');
-    
-    if (!infoPanel) {
-        infoPanel = document.createElement('div');
-        infoPanel.id = 'addressFilterInfo';
-        infoPanel.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: white;
-            padding: 12px 16px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            z-index: 999;
-            font-size: 12px;
-            border-left: 4px solid #FF9800;
-            max-width: 300px;
-        `;
-        document.body.appendChild(infoPanel);
-    }
+    // Panel lama (floating bottom-right) — sembunyikan, pakai header sebagai gantinya
+    const infoPanel = document.getElementById('addressFilterInfo');
+    if (infoPanel) infoPanel.style.display = 'none';
 
-    infoPanel.innerHTML = `
-        <div style="font-weight: 600; color: #E65100; margin-bottom: 6px; font-size: 13px;">
-            Filter Alamat Aktif
-        </div>
-        <div style="color: #333; margin-bottom: 4px;">
-            <strong>Alamat:</strong> ${address}
-        </div>
-        <div style="color: #666; font-size: 11px;">
-            <div>👥 ${pelangganCount} pelanggan ditampilkan</div>
-        </div>
-    `;
-    infoPanel.style.display = 'block';
+    updateActiveFilterStatus({ mode: 'address', address, pelangganCount });
 }
 
 export function getCurrentAddressFilter() {

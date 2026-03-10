@@ -156,11 +156,11 @@ export function updateLegend(pelangganCount, isDraggingEnabled) {
     const dropdown = document.getElementById('kecamatanSelect');
     if (!dropdown || !dropdown.parentElement) return;
 
-    let legendEl = document.getElementById('pelanggan-puri-legend');
+    let legendEl = document.getElementById('pelanggan-legend');
 
     if (!legendEl) {
         legendEl = document.createElement('div');
-        legendEl.id = 'pelanggan-puri-legend';
+        legendEl.id = 'pelanggan-legend';
         legendEl.style.cssText = `
             display: inline-flex;
             flex-direction: column;
@@ -178,6 +178,7 @@ export function updateLegend(pelangganCount, isDraggingEnabled) {
                 </span>
                 <span id="pelanggan-legend-mode" style="font-size:11px; color:#666; white-space:nowrap;"></span>
             </div>
+            <div id="filter-active-status" style="display:none; font-size:11px; margin-top:2px;"></div>
         `;
         // Insert BEFORE the select (left side)
         dropdown.parentElement.insertBefore(legendEl, dropdown);
@@ -388,4 +389,55 @@ export function updateFixKoordInfo(text) {
     } else {
         info.style.display = 'none';
     }
+}
+/**
+ * Update baris kedua di header (di bawah Total Pelanggan).
+ * mode: 'address' | 'blok' | 'nonpelanggan' | null (clear)
+ */
+export function updateActiveFilterStatus({ mode, address, blok, pelangganCount, buildingCount, filterDesc } = {}) {
+    const el = document.getElementById('filter-active-status');
+    if (!el) return;
+
+    if (!mode) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+
+    if (mode === 'address') {
+        html = `
+            <span style="color:#E65100; font-weight:600; white-space:nowrap;">
+                Filter Alamat: ${address}
+            </span>
+            <span style="color:#555; margin-left:8px; white-space:nowrap;">
+                — ${pelangganCount} pelanggan
+            </span>
+        `;
+    } else if (mode === 'blok') {
+        html = `
+            <span style="color:#1565C0; font-weight:600; white-space:nowrap;">
+                Filter Aktif: Blok ${blok}
+            </span>
+            <span style="color:#31572c; font-weight:700; margin-left:8px; white-space:nowrap;">
+                ${buildingCount} bangunan - ${pelangganCount} pelanggan
+            </span>
+        `;
+        if (filterDesc) {
+            html += `<span style="color:#4CAF50; font-size:10px; margin-left:6px; white-space:nowrap;">+ ${filterDesc}</span>`;
+        }
+    } else if (mode === 'nonpelanggan') {
+        html = `
+            <span style="color:#616161; font-weight:600; white-space:nowrap;">
+                Filter: Tanpa Pelanggan
+            </span>
+            <span style="color:#555; margin-left:8px; white-space:nowrap;">
+                — ${buildingCount} bangunan kosong
+            </span>
+        `;
+    }
+
+    el.innerHTML = `<div style="display:flex; align-items:center; gap:4px;">${html}</div>`;
+    el.style.display = 'block';
 }
