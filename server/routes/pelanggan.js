@@ -160,6 +160,63 @@ router.post('/', async (req, res) => {
   }
 });
 
+// POST /api/pelanggan/import-latlong - Update koordinat massal dari CSV
+router.post('/import-latlong', async (req, res) => {
+  const { rows } = req.body;
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ success: false, error: 'Data rows tidak valid atau kosong.' });
+  }
+
+  const { pool } = require('../config/database');
+  const conn = await pool.getConnection();
+
+  let total   = 0;
+  let updated = 0;
+  let skipped = 0;
+  let noCoord = 0;
+  let errors  = 0;
+
+  try {
+    for (const row of rows) {
+      total++;
+      try {
+        const nopelanggan = row['nopelanggan']?.toString().trim() || null;
+        const latitude    = parseFloat(row['Lat']);
+        const longitude   = parseFloat(row['Long']);
+
+        if (!nopelanggan) { skipped++; continue; }
+        if (isNaN(latitude) || isNaN(longitude)) { noCoord++; continue; }
+
+        const [check] = await conn.execute(
+          'SELECT id FROM pelanggan WHERE nopelanggan = ? LIMIT 1',
+          [nopelanggan]
+        );
+
+        if (check.length === 0) { skipped++; continue; }
+
+        await conn.execute(
+          `UPDATE pelanggan
+           SET latitude = ?, longitude = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE nopelanggan = ?`,
+          [latitude, longitude, nopelanggan]
+        );
+        updated++;
+      } catch (err) {
+        errors++;
+        console.error('[import-latlong] Error row:', err.message);
+      }
+    }
+
+    res.json({ success: true, total, updated, skipped, noCoord, errors });
+  } catch (err) {
+    console.error('[import-latlong] Fatal:', err);
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
 // PATCH /api/pelanggan/by-nosambungan/:nosambungan - Update koordinat semua periode
 router.patch('/by-nosambungan/:nosambungan', async (req, res) => {
   try {

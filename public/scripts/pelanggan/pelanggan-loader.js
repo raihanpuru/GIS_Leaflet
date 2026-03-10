@@ -1,11 +1,3 @@
-/**
- * pelanggan-loader.js
- * Tanggung jawab:
- *   - loadPelanggan()     — fetch awal + setup layer dari API
- *   - fetchBbox()         — incremental loading saat pan/zoom keluar area
- *   - onViewportOutOfBounds, expandLoadedBbox, isViewportCovered — helper bbox
- */
-
 import { getMap, updateBuildingsWithPelanggan, toggleBuildingLayer } from '../polygon/polygon.js';
 import { isValidCoord }                    from '../pelanggan/pelanggan-csv.js';
 import { pelangganAPI, PelangganAPI }      from '../api/pelanggan-api.js';
@@ -327,11 +319,12 @@ function _addControlButtons() {
 
     const cb = getControlCallbacks();
     const control = createControlButtons({
-        onToggle:       cb.onToggle,
-        onDragMode:     cb.onDragMode,
-        onSave:         cb.onSave,
-        onFixKoordinat: cb.onFixKoordinat,
-        onShowBuilding: cb.onShowBuilding,
+        onToggle:        cb.onToggle,
+        onDragMode:      cb.onDragMode,
+        onSave:          cb.onSave,
+        onFixKoordinat:  cb.onFixKoordinat,
+        onShowBuilding:  cb.onShowBuilding,
+        onImportLatLong: cb.onImportLatLong,
     });
     control.addTo(map);
 }

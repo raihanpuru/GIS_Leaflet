@@ -9,26 +9,20 @@ const bangunanRoutes  = require('./routes/bangunan');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(compression()); // ← tambahan, harus paling atas
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// Logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// Serve static files from public directory
 app.use(express.static(path.join(__dirname, '../public')));
 
-// API Routes
 app.use('/api/pelanggan', pelangganRoutes);
 app.use('/api/bangunan',  bangunanRoutes);
 
-// Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
@@ -37,12 +31,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Root endpoint - serve index.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-// 404 handler for API routes
 app.use('/api/*', (req, res) => {
   res.status(404).json({
     success: false,
@@ -50,7 +42,6 @@ app.use('/api/*', (req, res) => {
   });
 });
 
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
   res.status(500).json({
@@ -60,7 +51,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`
 =====================================

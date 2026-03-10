@@ -1,18 +1,7 @@
-/**
- * pelanggan.js  — Entry point & koordinator utama
- * Tanggung jawab:
- *   - Kontrol UI: toggle layer, drag mode, save CSV, fix koordinat
- *   - clearPelangganLayer, setCurrentKecamatan
- *   - Re-export publik dari store
- *
- * Detail implementasi marker  → pelanggan-marker.js
- * Detail implementasi loading → pelanggan-loader.js
- * Shared layer state          → pelanggan-layer-state.js
- */
-
 import { getMap }                     from '../polygon/polygon.js';
 import { toggleBuildingLayer }        from '../polygon/polygon.js';
 import { downloadCSV }                from '../pelanggan/pelanggan-csv.js';
+import { showLoading, hideLoading }   from '../utils/loading.js';
 import { pelangganAPI }               from '../api/pelanggan-api.js';
 import {
     updateLegend, updateToggleButton, updateDragButton,
@@ -206,6 +195,86 @@ export function savePelangganCSV() {
     alert(`✅ CSV berhasil diunduh!\nFile: ${filename}\nJumlah data: ${filteredData.length} pelanggan\n${filterDesc}`);
 }
 
+// ── Import Lat/Long dari CSV ──────────────────────────────────────────────────
+
+export async function importLatLongFromCSV(file) {
+    if (!file) return;
+
+    // Baca file sebagai teks
+    const text = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsText(file);
+    });
+
+    // Parse CSV
+    const { parseCsv } = await import('../pelanggan/pelanggan-csv.js');
+    const rows = parseCsv(text);
+
+    if (rows.length === 0) {
+        alert('File CSV kosong atau tidak bisa dibaca.');
+        return;
+    }
+
+    // Validasi kolom yang dibutuhkan
+    const headers = Object.keys(rows[0]);
+    const missing = ['nopelanggan', 'Lat', 'Long'].filter(h => !headers.includes(h));
+    if (missing.length > 0) {
+        alert(`Kolom berikut tidak ditemukan di CSV:\n${missing.join(', ')}\n\nPastikan header CSV menggunakan nama kolom yang tepat.`);
+        return;
+    }
+
+    const total   = rows.length;
+    const confirm = window.confirm(
+        `Import Lat/Long dari: ${file.name}\n` +
+        `Total baris: ${total}\n\n` +
+        `Kolom yang akan di-update: latitude & longitude\n` +
+        `Target: berdasarkan nopelanggan\n\n` +
+        `Lanjutkan?`
+    );
+    if (!confirm) return;
+
+    try {
+        showLoading('Mengupdate koordinat...');
+
+        const res = await fetch('/api/pelanggan/import-latlong', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rows }),
+        });
+
+        const result = await res.json();
+
+        hideLoading();
+
+        setTimeout(() => {
+            if (!res.ok) {
+                alert(`Gagal import:\n${result.message || result.error}`);
+                return;
+            }
+
+            alert(
+                `✅ Import selesai!\n\n` +
+                `Total baris CSV  : ${result.total}\n` +
+                `Berhasil di-update : ${result.updated}\n` +
+                `Tidak ditemukan   : ${result.skipped}\n` +
+                `Lat/Long kosong   : ${result.noCoord}\n` +
+                `Error             : ${result.errors}`
+            );
+
+            location.reload();
+        }, 50);
+
+    } catch (err) {
+        hideLoading();
+        setTimeout(() => {
+            alert(`Terjadi kesalahan saat import:\n${err.message}`);
+        }, 50);
+        console.error('[importLatLongFromCSV] Error:', err);
+    }
+}
+
 // ── Fix Koordinat ─────────────────────────────────────────────────────────────
 
 let fixKoordMode        = false;
@@ -326,21 +395,17 @@ export function getIsDraggingEnabledPublic() {
     return getIsDraggingEnabled();
 }
 
-// Daftarkan callbacks ke state agar pelanggan-loader.js bisa pakai tanpa circular import
-// Dieksekusi saat module pertama kali diload
 setControlCallbacks({
-    onToggle:       togglePelangganLayer,
-    onDragMode:     toggleDragMode,
-    onSave:         savePelangganCSV,
-    onFixKoordinat: toggleFixKoord,
+    onToggle:        togglePelangganLayer,
+    onDragMode:      toggleDragMode,
+    onSave:          savePelangganCSV,
+    onImportLatLong: importLatLongFromCSV,
+    onFixKoordinat:  toggleFixKoord,
     onShowBuilding: () => {
         const isNowVisible = toggleBuildingLayer();
         updateShowBuildingButton(isNowVisible);
     },
 });
 
-// Re-export dari store agar modul lain yang sudah import dari pelanggan.js tetap bisa pakai
 export { getPelangganData, getPelangganCount, isPelangganLayerVisible } from '../pelanggan/pelanggan-store.js';
-
-// Re-export loadPelanggan agar entry point (app.js) tidak perlu ganti import
 export { loadPelanggan } from '../pelanggan/pelanggan-loader.js';

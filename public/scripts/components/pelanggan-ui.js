@@ -253,6 +253,29 @@ export function createControlButtons(callbacks) {
         btnSave.onclick = onSave;
         L.DomEvent.disableClickPropagation(btnSave);
 
+        // Tombol Import Lat/Long dari CSV
+        const btnImport = L.DomUtil.create('button', 'leaflet-import-latlong-btn');
+        btnImport.id = 'importLatLong';
+        btnImport.innerHTML = 'Import Lat/Long';
+        btnImport.style.cssText = buttonStyle('#6a1b9a', '#6a1b9a');
+        addHoverEffect(btnImport);
+        L.DomEvent.disableClickPropagation(btnImport);
+
+        // Hidden file input yang di-trigger oleh tombol di atas
+        const fileInput = L.DomUtil.create('input', '');
+        fileInput.id = 'importLatLongFile';
+        fileInput.type = 'file';
+        fileInput.accept = '.csv';
+        fileInput.style.display = 'none';
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) callbacks.onImportLatLong(file);
+            fileInput.value = ''; // reset supaya file yang sama bisa dipilih lagi
+        };
+
+        btnImport.onclick = () => fileInput.click();
+        L.DomEvent.disableClickPropagation(fileInput);
+
         const btnShowBuilding = L.DomUtil.create('button', 'leaflet-show-building-btn');
         btnShowBuilding.id = 'show-building-btn';
         btnShowBuilding.innerHTML = 'Show Building';
@@ -265,6 +288,8 @@ export function createControlButtons(callbacks) {
         container.appendChild(btnShowBuilding);
         container.appendChild(btnDrag);
         container.appendChild(btnSave);
+        container.appendChild(btnImport);
+        container.appendChild(fileInput);
 
         // Button Fix Koordinat — hidden by default, muncul kalau ada data invalid
         const btnFixKoord = L.DomUtil.create('button', 'leaflet-fix-koord-btn');

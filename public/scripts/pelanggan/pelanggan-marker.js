@@ -1,11 +1,3 @@
-/**
- * pelanggan-marker.js
- * Tanggung jawab:
- *   - Membuat marker & label pelanggan (createPelangganMarker)
- *   - Viewport culling: updateMarkerVisibility, updateLabelVisibility
- *   - Rebuild spatial index setelah marker bergerak
- */
-
 import { getMap }                     from '../polygon/polygon.js';
 import { updateBuildingsWithPelanggan } from '../polygon/polygon.js';
 import {

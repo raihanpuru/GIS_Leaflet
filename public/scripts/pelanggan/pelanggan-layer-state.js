@@ -67,11 +67,12 @@ export function setIsFetchingBbox(val)                { _isFetchingBbox = val; }
 // Diset oleh pelanggan.js saat init, dibaca oleh pelanggan-loader.js
 // Ini memutus circular dependency loader ↔ pelanggan.js
 let _controlCallbacks = {
-    onToggle:       () => {},
-    onDragMode:     () => {},
-    onSave:         () => {},
-    onFixKoordinat: () => {},
-    onShowBuilding: () => {},
+    onToggle:         () => {},
+    onDragMode:       () => {},
+    onSave:           () => {},
+    onFixKoordinat:   () => {},
+    onShowBuilding:   () => {},
+    onImportLatLong:  () => {},
 };
 
 export function setControlCallbacks(cbs) { _controlCallbacks = { ..._controlCallbacks, ...cbs }; }

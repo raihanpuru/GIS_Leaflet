@@ -69,6 +69,7 @@ Aplikasi web GIS berbasis **Leaflet.js** untuk visualisasi dan manajemen data pe
 │   │   └── bangunan.js             # Route API /api/bangunan
 │   ├── scripts/
 │   │   ├── import-csv.js           # Script import data pelanggan dari CSV
+│   │   ├── import-latlong.js       # Script update koordinat pelanggan dari CSV
 │   │   └── import-geojson.js       # Script import data bangunan dari GeoJSON (OSM)
 │   └── test-connection.js          # Script verifikasi koneksi & tabel DB
 │
@@ -246,6 +247,23 @@ Format kolom CSV yang diharapkan:
 nosambungan, idpelanggan, nopelanggan, nama, alamat, noalamat, nourut, Long, Lat
 ```
 
+### Update Koordinat (Lat/Long) dari CSV
+
+Jika hanya ingin memperbaiki koordinat pelanggan tanpa mengubah data lainnya, gunakan script khusus ini:
+
+```bash
+node server/scripts/import-latlong.js /path/to/file.csv
+```
+
+Format kolom CSV minimal yang dibutuhkan:
+```
+nopelanggan, Lat, Long
+```
+
+> Kolom lain di CSV akan diabaikan. Target update berdasarkan `nopelanggan` (unik). Semua periode (bulan/tahun) milik pelanggan tersebut akan diupdate sekaligus.
+
+Alternatifnya, bisa juga langsung dari UI lewat tombol **Import Lat/Long** di peta (lihat [Cara Penggunaan](#️-cara-penggunaan)).
+
 ### Import Data Bangunan (GeoJSON dari OSM)
 
 Data bangunan diambil dari OpenStreetMap menggunakan **Overpass API**. Query-nya sudah tersedia di file `Overpass-turbo (script bangunan).txt`.
@@ -292,6 +310,7 @@ Buka browser: **http://localhost:3000**
 | `GET` | `/api/pelanggan/stats` | Statistik data pelanggan |
 | `GET` | `/api/pelanggan/:id` | Detail pelanggan by ID |
 | `POST` | `/api/pelanggan` | Tambah pelanggan baru |
+| `POST` | `/api/pelanggan/import-latlong` | Update koordinat massal dari data CSV |
 | `PUT` | `/api/pelanggan/:id` | Update pelanggan by ID |
 | `PATCH` | `/api/pelanggan/by-nosambungan/:nosambungan` | Update koordinat semua periode by nosambungan |
 | `DELETE` | `/api/pelanggan/:id` | Hapus pelanggan |
@@ -339,7 +358,9 @@ Buka browser: **http://localhost:3000**
 
 **Filter Data** — gunakan panel filter untuk menyaring berdasarkan periode, alamat, blok, atau kategori.
 
-**Export CSV** — klik tombol Download CSV untuk mengunduh data sesuai filter yang aktif.
+**Export CSV** — klik tombol **Save CSV** untuk mengunduh data sesuai filter yang aktif.
+
+**Import Lat/Long** — klik tombol **Import Lat/Long**, pilih file CSV yang berisi kolom `nopelanggan`, `Lat`, `Long`. Koordinat akan diupdate langsung ke database tanpa perlu restart server.
 
 **Edit Koordinat** — aktifkan mode Drag, geser marker ke posisi yang benar, koordinat tersimpan otomatis ke database.
 
@@ -351,6 +372,7 @@ Buka browser: **http://localhost:3000**
 
 | Versi | Keterangan |
 |---|---|
+| **v2.5** | Fitur import Lat/Long dari CSV via UI |
 | **v2.4** | Improvement + bugfix, fix count pelanggan |
 | **v2.3** | Improvement + bugfix |
 | **v2.2** | Improvement + bugfix |
@@ -370,6 +392,13 @@ Buka browser: **http://localhost:3000**
 ---
 
 ## 🔧 Troubleshooting
+
+**Error "request entity too large" saat Import Lat/Long**
+Pastikan `server/index.js` sudah menggunakan limit body parser yang cukup besar:
+```js
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+```
 
 **Tidak bisa konek ke MySQL**
 ```bash
